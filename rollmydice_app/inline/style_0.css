@@ -1,0 +1,40 @@
+
+@keyframes shimmer {
+  0%, 45% { background-position: 0% 0%; }
+  50% { background-position: 100% 100%; }
+  55%, 100% { background-position: 0% 0%; }
+}
+.metallic-gold {
+  background: radial-gradient(ellipse at 30% 30%, #ffe566 0%, #ffc107 25%, #b8860b 60%, #8b6914 100%);
+  background-size: 300% 300%;
+  animation: shimmer 4s ease-in-out infinite;
+}
+.metallic-silver {
+  background: radial-gradient(ellipse at 30% 30%, #ffffff 0%, #e8e8e8 25%, #888888 60%, #555555 100%);
+  background-size: 300% 300%;
+  animation: shimmer 4s ease-in-out infinite;
+  animation-delay: -2s;
+}
+
+/* Entrance animations */
+@keyframes fadeSlideDown {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeSlideLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes fadeSlideRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes fadeScale {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-in { animation-fill-mode: both; }

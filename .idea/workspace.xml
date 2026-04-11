@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="025fce30-579c-4d7e-bd04-12565524f38e" name="更改" comment="fix:整理路径">
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/metadata.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/metadata.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/render_dice.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/render_dice.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Li-shi-ling&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Li-shi-ling/astrbot_plugin_3D_dice.git&quot;,
+    &quot;accountId&quot;: &quot;756b5f9d-cdef-4254-a907-4de54564d516&quot;
+  }
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 2
+}</component>
+  <component name="ProjectId" id="3CCpzAypHJ2nCkhsGTGpPirMbdl" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;last_opened_file_path&quot;: &quot;E:/pythonDma/git/AstrBot/data/plugins/astrbot_plugin_3D_dice&quot;
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="E:\pythonDma\git\AstrBot\data\plugins\astrbot_plugin_3D_dice" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="E:\pythonDma\git\AstrBot\data\plugins\astrbot_plugin_3D_dice" />
+      <recent name="E:\pythonDma\git\AstrBot\data\plugins\astrbot_plugin_3D_dice\src" />
+      <recent name="E:\pythonDma\git\AstrBot\data\plugins\astrbot_plugin_3D_dice\render_dice" />
+    </key>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-d7ad00fb9fc3-c546a90a8094-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-242.23726.102" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="应用程序级" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="默认任务">
+      <changelist id="025fce30-579c-4d7e-bd04-12565524f38e" name="更改" comment="" />
+      <created>1775899665996</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1775899665996</updated>
+    </task>
+    <task id="LOCAL-00001" summary="init:初始化代码">
+      <option name="closed" value="true" />
+      <created>1775911604549</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1775911604549</updated>
+    </task>
+    <task id="LOCAL-00002" summary="init:骰子代码">
+      <option name="closed" value="true" />
+      <created>1775919594555</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1775919594555</updated>
+    </task>
+    <task id="LOCAL-00003" summary="init:骰子代码">
+      <option name="closed" value="true" />
+      <created>1775920687922</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1775920687922</updated>
+    </task>
+    <task id="LOCAL-00004" summary="init:骰子代码">
+      <option name="closed" value="true" />
+      <created>1775920740339</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1775920740339</updated>
+    </task>
+    <task id="LOCAL-00005" summary="init:骰子代码">
+      <option name="closed" value="true" />
+      <created>1775926589970</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1775926589970</updated>
+    </task>
+    <task id="LOCAL-00006" summary="fix:整理路径">
+      <option name="closed" value="true" />
+      <created>1775926648232</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1775926648232</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
+    <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="init:初始化代码" />
+    <MESSAGE value="init:骰子代码" />
+    <MESSAGE value="fix:整理路径" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix:整理路径" />
+  </component>
+</project>

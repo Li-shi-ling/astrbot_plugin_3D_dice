@@ -1,0 +1,26 @@
+{
+  "browser_path": {
+    "description": "Absolute path to a local Edge or Chrome executable.",
+    "type": "string",
+    "default": "",
+    "hint": "Leave empty to use the default browser lookup in the renderer."
+  },
+  "site_dir": {
+    "description": "Absolute path to the dice web app directory.",
+    "type": "string",
+    "default": "",
+    "hint": "Leave empty to use the plugin's rollmydice_app directory."
+  },
+  "default_duration_ms": {
+    "description": "Default animation duration in milliseconds.",
+    "type": "int",
+    "default": 2400,
+    "hint": "The value is clamped to a safe range in plugin code."
+  },
+  "default_fps": {
+    "description": "Default GIF frame rate.",
+    "type": "int",
+    "default": 16,
+    "hint": "The value is clamped to a safe range in plugin code."
+  }
+}

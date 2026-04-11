@@ -1,14 +1,32 @@
-# astrbot-plugin-helloworld
+# astrbot_plugin_3D_dice
 
-AstrBot 插件模板 / A template plugin for AstrBot plugin feature
+An AstrBot plugin that rolls animated 3D dice and returns the result as a GIF.
 
-> [!NOTE]
-> This repo is just a template of [AstrBot](https://github.com/AstrBotDevs/AstrBot) Plugin.
-> 
-> [AstrBot](https://github.com/AstrBotDevs/AstrBot) is an agentic assistant for both personal and group conversations. It can be deployed across dozens of mainstream instant messaging platforms, including QQ, Telegram, Feishu, DingTalk, Slack, LINE, Discord, Matrix, etc. In addition, it provides a reliable and extensible conversational AI infrastructure for individuals, developers, and teams. Whether you need a personal AI companion, an intelligent customer support agent, an automation assistant, or an enterprise knowledge base, AstrBot enables you to quickly build AI applications directly within your existing messaging workflows.
+## Commands
 
-# Supports
+- `/dice`
+- `/dice d20`
+- `/dice 3d6`
+- `/投骰子 2d8`
 
-- [AstrBot Repo](https://github.com/AstrBotDevs/AstrBot)
-- [AstrBot Plugin Development Docs (Chinese)](https://docs.astrbot.app/dev/star/plugin-new.html)
-- [AstrBot Plugin Development Docs (English)](https://docs.astrbot.app/en/dev/star/plugin-new.html)
+## Requirements
+
+- `node` must be available in `PATH`
+- The npm dependencies in `package.json` must be installed
+- A local Edge or Chrome browser must be available, or configure `browser_path`
+- The dice web app must exist in `rollmydice_app/`, or configure `site_dir`
+
+## Optional config
+
+```json
+{
+  "browser_path": "",
+  "site_dir": "",
+  "default_duration_ms": 2400,
+  "default_fps": 16
+}
+```
+
+## Output
+
+The plugin returns a plain-text summary and the rendered GIF in the same reply.

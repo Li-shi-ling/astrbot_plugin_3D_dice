@@ -1,11 +1,10 @@
 import json
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
-
-RUNTIME_DIR = Path(__file__).resolve().parent
-NODE_SCRIPT = RUNTIME_DIR / "render_dice_gif.mjs"
+PLUGIN_DIR = Path(__file__).resolve().parent.parent
+NODE_SCRIPT = PLUGIN_DIR / "render_dice_gif.mjs"
 
 
 def render_dice_gif(
@@ -13,9 +12,14 @@ def render_dice_gif(
     count: int = 1,
     duration: int = 2400,
     fps: int = 16,
-    output_name: Optional[str] = None,
-    browser: Optional[str] = None,
-) -> Dict[str, Any]:
+    output_name: str | None = None,
+    browser: str | None = None,
+    output_dir: Path | None = None,
+    site_dir: Path | None = None,
+) -> dict[str, Any]:
+    if not NODE_SCRIPT.exists():
+        raise FileNotFoundError(f"Node script not found: {NODE_SCRIPT}")
+
     cmd = [
         "node",
         str(NODE_SCRIPT),
@@ -29,10 +33,14 @@ def render_dice_gif(
         cmd.append(f"--outputName={output_name}")
     if browser:
         cmd.append(f"--browser={browser}")
+    if output_dir:
+        cmd.append(f"--outputDir={Path(output_dir).resolve()}")
+    if site_dir:
+        cmd.append(f"--siteDir={Path(site_dir).resolve()}")
 
     completed = subprocess.run(
         cmd,
-        cwd=RUNTIME_DIR,
+        cwd=PLUGIN_DIR,
         check=True,
         capture_output=True,
         text=True,

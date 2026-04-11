@@ -1,0 +1,10 @@
+URL: https://www.rollmydice.app/
+
+[localStorage]
+ph_phc_Jj8yleUItTiMitqy3CUx5gdXelikRJYrvlaJJehCnq3_posthog={"distinct_id":"019d7d52-cb23-7622-8d1a-550ed9b3239b","$sesid":[1775924098576,"019d7d52-cb23-7622-8d1a-550c33366e96",1775924071202],"$client_session_props":{"sessionId":"019d7d52-cb23-7622-8d1a-550c33366e96","props":{"initialPathName":"/","referringDomain":"$direct"}},"$device_id":"019d7d52-cb23-7622-8d1a-550ed9b3239b","$user_state":"anonymous","$capture_rate_limit":{"tokens":98.5,"last":1775924098575},"$initial_person_info":{"r":"$direct","u":"https://www.rollmydice.app/"},"$active_feature_flags":[],"$enabled_feature_flags":{},"$feature_flag_payloads":{},"$session_recording_enabled_server_side":true,"$console_log_recording_enabled_server_side":true,"$session_recording_network_payload_capture":{"capturePerformance":{"network_timing":true,"web_vitals":false,"web_vitals_allowed_metrics":null}},"$session_recording_canvas_recording":{"enabled":false,"fps":null,"quality":null},"$replay_sample_rate":null,"$replay_minimum_duration":null,"$autocapture_disabled_server_side":false,"$heatmaps_enabled_server_side":true,"$web_vitals_enabled_server_side":false,"$web_vitals_allowed_metrics":null,"$exception_capture_endpoint_suffix":"/e/","$exception_capture_enabled_server_side":false}
+rollmydice-preferences={"diceColorIndex":0,"diceType":6,"soundEnabled":true,"diceCount":1}
+
+[sessionStorage]
+ph_phc_Jj8yleUItTiMitqy3CUx5gdXelikRJYrvlaJJehCnq3_posthog={"$referrer":"$direct","$referring_domain":"$direct"}
+ph_phc_Jj8yleUItTiMitqy3CUx5gdXelikRJYrvlaJJehCnq3_primary_window_exists=true
+ph_phc_Jj8yleUItTiMitqy3CUx5gdXelikRJYrvlaJJehCnq3_window_id="019d7d52-cb23-7622-8d1a-550d6f2010c6"
