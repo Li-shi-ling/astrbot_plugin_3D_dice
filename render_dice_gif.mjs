@@ -49,6 +49,8 @@ try {
   const browser = await puppeteer.launch({
     executablePath: browserPath,
     headless: true,
+    timeout: timeoutMs,
+    dumpio: true,
     defaultViewport: {
       width: viewportWidth,
       height: viewportHeight,
