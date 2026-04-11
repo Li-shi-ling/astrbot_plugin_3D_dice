@@ -4,12 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="025fce30-579c-4d7e-bd04-12565524f38e" name="更改" comment="fix:添加完整渲染代码">
-      <change afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/render_dice_gif.mjs" beforeDir="false" afterPath="$PROJECT_DIR$/render_dice_gif.mjs" afterDir="false" />
-    </list>
+    <list default="true" id="025fce30-579c-4d7e-bd04-12565524f38e" name="更改" comment="fix:压缩渲染代码" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -127,7 +122,15 @@
       <option name="project" value="LOCAL" />
       <updated>1775927542230</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="fix:压缩渲染代码">
+      <option name="closed" value="true" />
+      <created>1775928614464</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1775928614464</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
@@ -135,6 +138,7 @@
     <MESSAGE value="init:骰子代码" />
     <MESSAGE value="fix:整理路径" />
     <MESSAGE value="fix:添加完整渲染代码" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix:添加完整渲染代码" />
+    <MESSAGE value="fix:压缩渲染代码" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix:压缩渲染代码" />
   </component>
 </project>
