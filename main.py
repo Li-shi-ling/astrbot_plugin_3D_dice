@@ -20,7 +20,7 @@ MAX_FPS = 30
 
 @register(
     "astrbot_plugin_3D_dice",
-    "Codex",
+    "Lishining",
     "Render animated 3D dice rolls and return the result as a GIF.",
     "1.0.0",
 )
