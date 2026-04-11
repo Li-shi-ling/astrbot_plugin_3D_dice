@@ -26,6 +26,7 @@ const maxAnimationWaitMs = Number(args.maxAnimationWait ?? 2000);
 const frameDelay = Math.max(20, Math.round(1000 / fps));
 const totalFrames = Math.max(1, Math.ceil(durationMs / frameDelay));
 const browserPath = resolveBrowserPath(args.browser);
+const platform = process.platform;
 const diceType = args.diceType ?? "D6";
 const diceCount = Number(args.count ?? 1);
 
@@ -57,6 +58,15 @@ try {
       "--autoplay-policy=no-user-gesture-required",
       "--disable-background-timer-throttling",
       "--disable-renderer-backgrounding",
+      "--disable-dev-shm-usage",
+      "--mute-audio",
+      ...(platform === "linux"
+        ? [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-gpu",
+          ]
+        : []),
     ],
   });
 
@@ -108,10 +118,17 @@ function defaultOutputName(args) {
 function resolveBrowserPath(explicitPath) {
   const candidates = [
     explicitPath,
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    process.env.BROWSER,
     "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
     "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/snap/bin/chromium",
   ].filter(Boolean);
 
   return candidates.find((candidate) => fs.existsSync(candidate));

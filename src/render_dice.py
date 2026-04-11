@@ -1,7 +1,7 @@
 import json
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 
 PLUGIN_DIR = Path(__file__).resolve().parent.parent
 NODE_SCRIPT = PLUGIN_DIR / "render_dice_gif.mjs"
@@ -12,11 +12,11 @@ def render_dice_gif(
     count: int = 1,
     duration: int = 2400,
     fps: int = 16,
-    output_name: str | None = None,
-    browser: str | None = None,
-    output_dir: Path | None = None,
-    site_dir: Path | None = None,
-) -> dict[str, Any]:
+    output_name: Optional[str] = None,
+    browser: Optional[str] = None,
+    output_dir: Optional[Path] = None,
+    site_dir: Optional[Path] = None,
+) -> Dict[str, Any]:
     if not NODE_SCRIPT.exists():
         raise FileNotFoundError(f"Node script not found: {NODE_SCRIPT}")
 
@@ -38,14 +38,20 @@ def render_dice_gif(
     if site_dir:
         cmd.append(f"--siteDir={Path(site_dir).resolve()}")
 
-    completed = subprocess.run(
-        cmd,
-        cwd=PLUGIN_DIR,
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    try:
+        completed = subprocess.run(
+            cmd,
+            cwd=PLUGIN_DIR,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        stdout = (exc.stdout or "").strip()
+        details = stderr or stdout or str(exc)
+        raise RuntimeError(f"Node renderer failed: {details}")
 
     stdout = completed.stdout.strip().splitlines()
     if not stdout:
