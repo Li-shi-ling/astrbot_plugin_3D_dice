@@ -138,18 +138,23 @@ function createLaunchOptions({
     "--mute-audio",
   ];
   let headless = true;
+  const hasDisplay = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
 
   if (platform === "linux") {
-    headless = false;
+    headless = hasDisplay ? false : true;
     args.push(
-      "--headless=chrome",
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--enable-webgl",
+      "--enable-unsafe-swiftshader",
       "--ignore-gpu-blocklist",
       "--use-angle=swiftshader",
       "--use-gl=egl",
+      "--disable-gpu-sandbox",
     );
+    if (!hasDisplay) {
+      args.push("--headless=chrome");
+    }
   }
 
   return {

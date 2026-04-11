@@ -1,6 +1,8 @@
 import json
 import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -23,6 +25,7 @@ def render_dice_gif(
         raise FileNotFoundError(f"Node script not found: {NODE_SCRIPT}")
 
     cmd = [
+        *build_node_prefix(),
         "node",
         str(NODE_SCRIPT),
         f"--diceType={dice_type}",
@@ -50,6 +53,7 @@ def render_dice_gif(
             capture_output=True,
             text=True,
             encoding="utf-8",
+            env=build_render_env(),
         )
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or "").strip()
@@ -79,6 +83,28 @@ def detect_browser_path() -> Optional[str]:
         if Path(candidate).exists():
             return candidate
     return None
+
+
+def build_node_prefix() -> list[str]:
+    if not sys.platform.startswith("linux"):
+        return []
+
+    if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+        return []
+
+    xvfb_run = shutil.which("xvfb-run")
+    if not xvfb_run:
+        return []
+
+    return [xvfb_run, "-a", "-s", "-screen 0 1280x1600x24"]
+
+
+def build_render_env() -> dict[str, str]:
+    env = os.environ.copy()
+    if sys.platform.startswith("linux"):
+        env.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
+        env.setdefault("MESA_LOADER_DRIVER_OVERRIDE", "llvmpipe")
+    return env
 
 
 if __name__ == "__main__":
