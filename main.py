@@ -119,7 +119,7 @@ class DicePlugin(Star):
         match = re.fullmatch(r"(?:(\d+)\s*)?D(\d+)", cleaned)
         if not match:
             raise ValueError(
-                "Usage: /dice [d4|d6|d8|d10|d12|d20|NdX], for example /dice 3d6"
+                "Usage: /dice [d4|d6|d8|d20|NdX], for example /dice 3d6"
             )
 
         count = int(match.group(1) or DEFAULT_DICE_COUNT)
@@ -128,8 +128,8 @@ class DicePlugin(Star):
 
         if count < 1 or count > MAX_DICE_COUNT:
             raise ValueError(f"Dice count must be between 1 and {MAX_DICE_COUNT}.")
-        if dice_type not in {"D4", "D6", "D8", "D10", "D12", "D20"}:
-            raise ValueError("Supported dice types: d4, d6, d8, d10, d12, d20.")
+        if dice_type not in {"D4", "D6", "D8", "D20"}:
+            raise ValueError("Supported dice types: d4, d6, d8, d20.")
 
         return count, dice_type
 

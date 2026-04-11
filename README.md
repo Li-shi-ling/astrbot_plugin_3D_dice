@@ -9,6 +9,8 @@ An AstrBot plugin that rolls animated 3D dice and returns the result as a GIF.
 - `/dice 3d6`
 - `/投骰子 2d8`
 
+Supported dice types: `d4`, `d6`, `d8`, `d20`
+
 ## Requirements
 
 - `node` must be available in `PATH`
