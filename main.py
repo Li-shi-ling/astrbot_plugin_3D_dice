@@ -19,7 +19,7 @@ def _config_value(config: AstrBotConfig, key: str, default):
 @register(
     "astrbot_plugin_3D_dice",
     "OpenAI Codex",
-    "Render cs.html style animated 3D d6 GIFs.",
+    "Render animated 3D dice GIFs with a local Node.js backend.",
     "0.1.0",
 )
 class DicePlugin(Star):
@@ -31,9 +31,7 @@ class DicePlugin(Star):
 
     def _build_render_config(self) -> RenderConfig:
         return RenderConfig(
-            playwright_path=str(
-                _config_value(self.config, "playwright_path", "playwright")
-            ),
+            node_path=str(_config_value(self.config, "node_path", "node")),
             width=int(_config_value(self.config, "default_width", 480)),
             height=int(_config_value(self.config, "default_height", 480)),
             fps=int(_config_value(self.config, "default_fps", 20)),
@@ -46,7 +44,7 @@ class DicePlugin(Star):
 
     @filter.command("dice")
     async def roll_dice(self, event: AstrMessageEvent):
-        """Render cs.html style 3D d6 GIFs. Example: /dice 2d6 theme=ember seed=42"""
+        """Render animated 3D dice GIFs. Example: /dice 2d6 theme=ember seed=42"""
         try:
             result = self.service.render_from_text(event.message_str)
         except Exception as exc:
@@ -69,12 +67,12 @@ class DicePlugin(Star):
             "\n".join(
                 [
                     "Usage: /dice <notation> [theme=<name>] [seed=<int>] [width=<int>] [height=<int>] [fps=<int>] [frames=<int>] [transparent=true|false]",
-                    "Supported dice: d6 only",
+                    "Supported dice: d4, d6, d8, d10, d12, d20, d100",
                     "Themes: classic, ember, emerald, midnight",
                     "Examples:",
-                    "/dice d6",
+                    "/dice d20",
                     "/dice 2d6 theme=ember",
-                    "/dice 3d6 seed=42",
+                    "/dice 1d100 seed=42",
                 ],
             ),
         )

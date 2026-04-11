@@ -1,6 +1,6 @@
 name: astrbot_plugin_3D_dice
 display_name: 3D Dice
-desc: Generate cs.html style animated 3D d6 GIFs.
+desc: Generate animated 3D dice GIFs with a local Node.js simulation backend.
 version: v0.1.0
 author: OpenAI Codex
 repo: https://github.com/AstrBotDevs/AstrBot

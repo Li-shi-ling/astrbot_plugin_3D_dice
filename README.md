@@ -1,19 +1,15 @@
 # astrbot_plugin_3D_dice
 
-Generate `cs.html` style animated 3D `d6` GIFs inside AstrBot.
+Generate animated 3D dice GIFs inside AstrBot.
 
 ## Features
 
-- Reproduces the ivory rounded dice and red pip visual style from `cs.html`
-- Uses true 3D cube projection for both browser preview and GIF generation
-- Supports one or more `d6` dice in one request, for example `d6`, `2d6`, or `3d6`
-- Generates an HTML preview page and a final GIF from the same 3D animation data
-- Uses Playwright for browser capture when available
-- Falls back to Pillow rendering with the same 3D cube projection when Playwright is unavailable
+- Supports `d4`, `d6`, `d8`, `d10`, `d12`, `d20`, and `d100`
+- Supports multiple dice in one request, for example `2d6` or `d20+d4`
+- Uses a local Node.js renderer to simulate motion and output frame data
+- Uses Pillow on the Python side to assemble the final GIF
 - Supports deterministic seeds for reproducible rolls
 - Supports visual themes: `classic`, `ember`, `emerald`, `midnight`
-- Reuses cached GIF outputs for identical requests
-- Keeps the plugin runtime fully in Python aside from optional Playwright CLI capture
 
 ## Commands
 
@@ -25,22 +21,23 @@ Generate `cs.html` style animated 3D `d6` GIFs inside AstrBot.
 Examples:
 
 ```text
-/dice d6
+/dice d20
 /dice 2d6 theme=ember
-/dice 3d6 seed=42
-/dice 2d6 theme=midnight width=640 height=640
+/dice d20+d4 seed=42
+/dice 1d100 theme=midnight width=640 height=640
 ```
 
 ## Requirements
 
 - AstrBot
-- Playwright CLI available as `playwright` for HTML-based frame capture
+- Node.js 22+ available as `node`, or configure `node_path` in WebUI
 - Python dependencies from the AstrBot environment, including Pillow
 
 ## Configuration
 
 The plugin provides `_conf_schema.json` with these main options:
 
+- `node_path`
 - `default_width`
 - `default_height`
 - `default_fps`
@@ -49,25 +46,26 @@ The plugin provides `_conf_schema.json` with these main options:
 - `max_dice_count`
 - `timeout_ms`
 - `debug`
-- `playwright_path`
 
 ## Renderer Architecture
 
 - Python side:
   - Parse dice notation and command options
-- Build cs-style `d6` 3D animation data
-- Generate a browser preview page from `renderer/preview_template.html`
-- Prefer browser-based frame capture through the generated HTML preview
-- Fall back to direct Pillow 3D projection drawing if Playwright capture is unavailable
-- Cache generated GIF outputs in plugin data storage
-- Generate a reference-style HTML preview page beside the cached GIF
+  - Invoke the local Node.js renderer
+  - Draw the returned frame data into a GIF
+  - Cache generated GIF outputs in plugin data storage
+- Node.js side:
+  - Build polyhedron geometry for each supported die type
+  - Run a lightweight physics-style simulation
+  - Project faces into 2D screen space
+  - Return polygon and label data for each frame
 
 ## Limitations
 
-- Only `d6` is supported in the current renderer
-- The motion is stylized to match `cs.html`, not a full rigid-body physics engine
+- v1 uses a dependency-free Node.js renderer instead of a browser-based Three.js pipeline
+- Multi-dice collisions are approximate
+- Face text is drawn for readability, not true face texture projection
 - Output format is currently GIF only
-- Browser-based frame capture depends on local Playwright CLI availability
 
 ## Testing
 

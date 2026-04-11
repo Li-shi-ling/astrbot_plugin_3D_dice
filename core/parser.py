@@ -3,7 +3,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .models import DEFAULT_THEME, SUPPORTED_SIDES, DiceSpec
+from .models import DEFAULT_THEME, DiceSpec, SUPPORTED_SIDES
+
 
 _TERM_RE = re.compile(r"(?i)^(?:(\d+)?d)(\d+)$")
 
