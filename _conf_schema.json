@@ -1,9 +1,9 @@
 {
-  "node_path": {
-    "description": "Node.js executable path",
+  "playwright_path": {
+    "description": "Playwright CLI path",
     "type": "string",
-    "default": "node",
-    "hint": "Used to launch the local dice renderer."
+    "default": "playwright",
+    "hint": "Used for browser-based frame capture when available."
   },
   "default_width": {
     "description": "Default GIF width",
@@ -37,7 +37,7 @@
     "default": 8
   },
   "timeout_ms": {
-    "description": "Node renderer timeout in milliseconds",
+    "description": "Renderer timeout in milliseconds",
     "type": "int",
     "default": 30000
   },

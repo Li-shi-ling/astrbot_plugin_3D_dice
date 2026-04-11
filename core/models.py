@@ -3,8 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
-SUPPORTED_SIDES = (4, 6, 8, 10, 12, 20, 100)
+SUPPORTED_SIDES = (6,)
 DEFAULT_THEME = "classic"
 
 
@@ -16,7 +15,7 @@ class DiceSpec:
 
 @dataclass(slots=True)
 class RenderConfig:
-    node_path: str = "node"
+    playwright_path: str = "playwright"
     width: int = 480
     height: int = 480
     fps: int = 20
@@ -68,6 +67,7 @@ class DiceRenderResult:
     image_path: Path
     values: list[int]
     dice_labels: list[str]
+    preview_path: Path | None = None
     cached: bool = False
 
     @property

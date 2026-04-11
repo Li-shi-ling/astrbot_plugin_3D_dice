@@ -14,8 +14,7 @@ from .parser import (
     parse_command_text,
     parse_dice_notation,
 )
-from .renderer import NodeRenderer
-
+from .renderer import CsDiceRenderer
 
 PLUGIN_NAME = "astrbot_plugin_3D_dice"
 
@@ -27,7 +26,9 @@ class DiceService:
         self.data_dir = StarTools.get_data_dir(PLUGIN_NAME)
         self.cache_dir = self.data_dir / "cache"
         self.temp_dir = Path(get_astrbot_temp_path()) / PLUGIN_NAME
-        self.renderer = NodeRenderer(plugin_root, self.cache_dir, self.temp_dir, config)
+        self.renderer = CsDiceRenderer(
+            plugin_root, self.cache_dir, self.temp_dir, config
+        )
 
     def build_request(self, command_text: str) -> DiceRequest:
         parsed = parse_command_text(command_text)

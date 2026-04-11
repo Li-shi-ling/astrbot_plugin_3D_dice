@@ -1,7 +1,0 @@
-{
-  "name": "astrbot-plugin-3d-dice-renderer",
-  "private": true,
-  "version": "0.1.0",
-  "description": "Dependency-free Node.js renderer for astrbot_plugin_3D_dice",
-  "license": "MIT"
-}
