@@ -30,6 +30,13 @@ const browserPath = resolveBrowserPath(args.browser);
 const platform = process.platform;
 const diceType = args.diceType ?? "D6";
 const diceCount = Number(args.count ?? 1);
+const launchOptions = createLaunchOptions({
+  browserPath,
+  platform,
+  timeoutMs,
+  viewportWidth,
+  viewportHeight,
+});
 
 if (!fs.existsSync(siteDir)) {
   throw new Error(`Site directory not found: ${siteDir}`);
@@ -46,34 +53,7 @@ const server = createStaticServer(siteDir);
 try {
   const { port } = await listen(server);
   const baseUrl = `http://127.0.0.1:${port}/index.html`;
-  const browser = await puppeteer.launch({
-    executablePath: browserPath,
-    headless: true,
-    timeout: timeoutMs,
-    dumpio: true,
-    defaultViewport: {
-      width: viewportWidth,
-      height: viewportHeight,
-      deviceScaleFactor: 1,
-    },
-    args: [
-      "--allow-file-access-from-files",
-      "--autoplay-policy=no-user-gesture-required",
-      "--disable-background-timer-throttling",
-      "--disable-renderer-backgrounding",
-      "--disable-dev-shm-usage",
-      "--mute-audio",
-      ...(platform === "linux"
-        ? [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--enable-webgl",
-            "--ignore-gpu-blocklist",
-            "--use-gl=swiftshader",
-          ]
-        : []),
-    ],
-  });
+  const browser = await puppeteer.launch(launchOptions);
 
   try {
     const page = await browser.newPage();
@@ -140,6 +120,50 @@ function resolveBrowserPath(explicitPath) {
   ].filter(Boolean);
 
   return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
+function createLaunchOptions({
+  browserPath,
+  platform,
+  timeoutMs,
+  viewportWidth,
+  viewportHeight,
+}) {
+  const args = [
+    "--allow-file-access-from-files",
+    "--autoplay-policy=no-user-gesture-required",
+    "--disable-background-timer-throttling",
+    "--disable-dev-shm-usage",
+    "--disable-renderer-backgrounding",
+    "--mute-audio",
+  ];
+  let headless = true;
+
+  if (platform === "linux") {
+    headless = false;
+    args.push(
+      "--headless=chrome",
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--enable-webgl",
+      "--ignore-gpu-blocklist",
+      "--use-angle=swiftshader",
+      "--use-gl=egl",
+    );
+  }
+
+  return {
+    executablePath: browserPath,
+    headless,
+    timeout: timeoutMs,
+    dumpio: true,
+    defaultViewport: {
+      width: viewportWidth,
+      height: viewportHeight,
+      deviceScaleFactor: 1,
+    },
+    args,
+  };
 }
 
 function createStaticServer(rootDir) {

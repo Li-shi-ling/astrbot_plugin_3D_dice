@@ -1,10 +1,12 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 PLUGIN_DIR = Path(__file__).resolve().parent.parent
 NODE_SCRIPT = PLUGIN_DIR / "render_dice_gif.mjs"
+DEFAULT_TIMEOUT_MS = 60000
 
 
 def render_dice_gif(
@@ -31,12 +33,14 @@ def render_dice_gif(
 
     if output_name:
         cmd.append(f"--outputName={output_name}")
-    if browser:
-        cmd.append(f"--browser={browser}")
+    resolved_browser = browser or detect_browser_path()
+    if resolved_browser:
+        cmd.append(f"--browser={resolved_browser}")
     if output_dir:
         cmd.append(f"--outputDir={Path(output_dir).resolve()}")
     if site_dir:
         cmd.append(f"--siteDir={Path(site_dir).resolve()}")
+    cmd.append(f"--timeout={DEFAULT_TIMEOUT_MS}")
 
     try:
         completed = subprocess.run(
@@ -58,6 +62,23 @@ def render_dice_gif(
         raise RuntimeError("Renderer returned no output")
 
     return json.loads(stdout[-1])
+
+
+def detect_browser_path() -> Optional[str]:
+    candidates = [
+        os.environ.get("PUPPETEER_EXECUTABLE_PATH"),
+        os.environ.get("BROWSER"),
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if Path(candidate).exists():
+            return candidate
+    return None
 
 
 if __name__ == "__main__":
