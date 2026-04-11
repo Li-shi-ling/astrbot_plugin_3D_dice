@@ -30,3 +30,8 @@ An AstrBot plugin that rolls animated 3D dice and returns the result as a GIF.
 ## Output
 
 The plugin returns a plain-text summary and the rendered GIF in the same reply.
+
+## Third-party assets
+
+The `rollmydice_app` directory contains third-party web assets used only as the local rendering runtime for this plugin.
+Keep original attribution and license information when redistributing or modifying those assets.

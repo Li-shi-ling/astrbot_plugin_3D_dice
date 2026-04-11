@@ -4,11 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="025fce30-579c-4d7e-bd04-12565524f38e" name="更改" comment="fix:整理路径">
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/metadata.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/metadata.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/render_dice.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/render_dice.py" afterDir="false" />
+    <list default="true" id="025fce30-579c-4d7e-bd04-12565524f38e" name="更改" comment="fix:添加完整渲染代码">
+      <change afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/render_dice_gif.mjs" beforeDir="false" afterPath="$PROJECT_DIR$/render_dice_gif.mjs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -119,13 +119,22 @@
       <option name="project" value="LOCAL" />
       <updated>1775926648232</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="fix:添加完整渲染代码">
+      <option name="closed" value="true" />
+      <created>1775927542230</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1775927542230</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="init:初始化代码" />
     <MESSAGE value="init:骰子代码" />
     <MESSAGE value="fix:整理路径" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix:整理路径" />
+    <MESSAGE value="fix:添加完整渲染代码" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix:添加完整渲染代码" />
   </component>
 </project>

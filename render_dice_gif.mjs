@@ -14,7 +14,7 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
 
 const args = parseArgs(process.argv.slice(2));
-const siteDir = path.resolve(__dirname, args.siteDir ?? "../rollmydice_app");
+const siteDir = path.resolve(__dirname, args.siteDir ?? "./rollmydice_app");
 const outputDir = path.resolve(__dirname, args.outputDir ?? "./outputs");
 const outputName = args.outputName ?? defaultOutputName(args);
 const outputPath = path.resolve(outputDir, outputName);
