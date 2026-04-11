@@ -23,6 +23,7 @@ const viewportHeight = Number(args.height ?? 1400);
 const durationMs = Number(args.duration ?? 2400);
 const fps = Number(args.fps ?? 16);
 const maxAnimationWaitMs = Number(args.maxAnimationWait ?? 2000);
+const timeoutMs = Number(args.timeout ?? 60000);
 const frameDelay = Math.max(20, Math.round(1000 / fps));
 const totalFrames = Math.max(1, Math.ceil(durationMs / frameDelay));
 const browserPath = resolveBrowserPath(args.browser);
@@ -64,7 +65,9 @@ try {
         ? [
             "--no-sandbox",
             "--disable-setuid-sandbox",
-            "--disable-gpu",
+            "--enable-webgl",
+            "--ignore-gpu-blocklist",
+            "--use-gl=swiftshader",
           ]
         : []),
     ],
@@ -72,8 +75,11 @@ try {
 
   try {
     const page = await browser.newPage();
-    await page.goto(baseUrl, { waitUntil: "networkidle2" });
-    await waitForDiceApp(page);
+    page.setDefaultTimeout(timeoutMs);
+    page.setDefaultNavigationTimeout(timeoutMs);
+    attachPageDiagnostics(page);
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+    await waitForDiceApp(page, timeoutMs);
     await configureDice(page, { diceType, diceCount });
     const clip = await getCaptureClip(page);
     const baselineFrame = await captureClipPng(page, clip);
@@ -193,20 +199,67 @@ function listen(server) {
   });
 }
 
-async function waitForDiceApp(page) {
-  await page.waitForFunction(() => {
+async function waitForDiceApp(page, timeoutMs) {
+  try {
+    await page.waitForFunction(() => {
+      const canvas = document.querySelector("canvas");
+      const buttons = [...document.querySelectorAll("button")];
+      return Boolean(canvas && buttons.some((button) => /roll/i.test(button.textContent || "")));
+    }, { timeout: timeoutMs });
+    await page.waitForSelector("canvas", { timeout: timeoutMs });
+    await page.waitForFunction(() => {
+      const canvas = document.querySelector("canvas");
+      if (!canvas) return false;
+      const rect = canvas.getBoundingClientRect();
+      return rect.width > 100 && rect.height > 100;
+    }, { timeout: timeoutMs });
+  } catch (error) {
+    const pageState = await collectPageState(page);
+    throw new Error(
+      `Dice app did not become ready within ${timeoutMs}ms. State: ${JSON.stringify(pageState)}`,
+      { cause: error },
+    );
+  }
+
+  await sleep(1000);
+}
+
+function attachPageDiagnostics(page) {
+  page.on("console", (message) => {
+    const type = message.type().toUpperCase();
+    process.stderr.write(`[page:${type}] ${message.text()}\n`);
+  });
+  page.on("pageerror", (error) => {
+    process.stderr.write(`[page:error] ${error.stack || error.message}\n`);
+  });
+  page.on("requestfailed", (request) => {
+    process.stderr.write(
+      `[page:requestfailed] ${request.method()} ${request.url()} ${request.failure()?.errorText || "unknown"}\n`,
+    );
+  });
+}
+
+async function collectPageState(page) {
+  return page.evaluate(() => {
     const canvas = document.querySelector("canvas");
     const buttons = [...document.querySelectorAll("button")];
-    return Boolean(canvas && buttons.some((button) => /roll/i.test(button.textContent || "")));
+    const bodyText = (document.body?.innerText || "").trim().replace(/\s+/g, " ").slice(0, 300);
+    const canvasRect = canvas?.getBoundingClientRect();
+
+    return {
+      title: document.title,
+      readyState: document.readyState,
+      buttonTexts: buttons.map((button) => (button.textContent || "").trim()).filter(Boolean),
+      canvasCount: document.querySelectorAll("canvas").length,
+      canvasRect: canvasRect
+        ? {
+            width: Math.round(canvasRect.width),
+            height: Math.round(canvasRect.height),
+          }
+        : null,
+      bodyText,
+    };
   });
-  await page.waitForSelector("canvas");
-  await page.waitForFunction(() => {
-    const canvas = document.querySelector("canvas");
-    if (!canvas) return false;
-    const rect = canvas.getBoundingClientRect();
-    return rect.width > 100 && rect.height > 100;
-  });
-  await sleep(1000);
 }
 
 async function configureDice(page, { diceType, diceCount }) {
