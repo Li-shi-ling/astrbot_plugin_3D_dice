@@ -16,6 +16,8 @@ from typing import Any
 from PIL import Image
 from playwright.sync_api import TimeoutError, sync_playwright
 
+from astrbot.api import logger
+
 PLUGIN_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_TIMEOUT_MS = 60000
 HEADLESS_GL_ERROR_PATTERNS = (
@@ -33,7 +35,7 @@ def append_debug(diagnostics: list[str], message: str) -> None:
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     line = f"[3D_dice][render] {timestamp} {message}"
     diagnostics.append(line)
-    print(line, file=sys.stderr, flush=True)
+    logger.debug(line)
 
 
 def render_dice_gif(
