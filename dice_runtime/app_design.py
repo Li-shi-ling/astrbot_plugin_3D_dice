@@ -61,8 +61,10 @@ D8_RESULT_NORMALS: dict[int, tuple[int, int, int]] = {
 }
 
 ROLL_IMPULSE_EXPRESSION = (
+    "wakeUp(); position=spawn; "
     "velocity=((random-.5)*20, random*15+10, (random-.5)*20); "
-    "angularVelocity=((random-.5)*50, (random-.5)*50, (random-.5)*50)"
+    "angularVelocity=((random-.5)*50, (random-.5)*50, (random-.5)*50); "
+    "wakeUp()"
 )
 
 SOURCE_MARKERS = (
@@ -73,6 +75,8 @@ SOURCE_MARKERS = (
     "angularVelocity.set((Math.random()-.5)*50",
     "let M={4:{mass:40",
     "V={4:.84",
+    "T.wakeUp&&T.wakeUp()",
+    "T.position&&T.position.set&&T.position.set(...b)",
 )
 
 
