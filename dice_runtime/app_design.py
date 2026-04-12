@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
 PLUGIN_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_SITE_DIR = PLUGIN_DIR / "dice_roller_app"
+D10_RING_HEIGHT_RATIO = 0.1056
+D10_RING_RADIUS_RATIO = 0.75
+D10_POLAR_HEIGHT_RATIO = 1.0
 
 
 @dataclass(frozen=True)
@@ -89,7 +93,96 @@ SOURCE_MARKERS = (
     "T.wakeUp&&T.wakeUp()",
     "T.position&&T.position.set&&T.position.set(...b)",
     '{sides:10,label:"D10"}',
+    "r=.1056*e",
+    "n=.1056*t",
 )
+
+
+def d10_kite_planarity_errors(size: float = 1.0) -> list[float]:
+    top = (0.0, D10_POLAR_HEIGHT_RATIO * size, 0.0)
+    bottom = (0.0, -D10_POLAR_HEIGHT_RATIO * size, 0.0)
+    upper = [
+        (
+            math.cos(index / 5 * math.pi * 2) * D10_RING_RADIUS_RATIO * size,
+            D10_RING_HEIGHT_RATIO * size,
+            math.sin(index / 5 * math.pi * 2) * D10_RING_RADIUS_RATIO * size,
+        )
+        for index in range(5)
+    ]
+    lower = [
+        (
+            math.cos(index / 5 * math.pi * 2 + math.pi / 5)
+            * D10_RING_RADIUS_RATIO
+            * size,
+            -D10_RING_HEIGHT_RATIO * size,
+            math.sin(index / 5 * math.pi * 2 + math.pi / 5)
+            * D10_RING_RADIUS_RATIO
+            * size,
+        )
+        for index in range(5)
+    ]
+
+    errors = []
+    for index in range(5):
+        errors.append(
+            _point_to_plane_distance(
+                lower[index],
+                top,
+                upper[index],
+                upper[(index + 1) % 5],
+            )
+        )
+    for index in range(5):
+        errors.append(
+            _point_to_plane_distance(
+                upper[(index + 1) % 5],
+                bottom,
+                lower[index],
+                lower[(index + 1) % 5],
+            )
+        )
+    return errors
+
+
+def _point_to_plane_distance(
+    point: tuple[float, float, float],
+    plane_a: tuple[float, float, float],
+    plane_b: tuple[float, float, float],
+    plane_c: tuple[float, float, float],
+) -> float:
+    ab = _subtract(plane_b, plane_a)
+    ac = _subtract(plane_c, plane_a)
+    ap = _subtract(point, plane_a)
+    normal = _cross(ab, ac)
+    normal_length = math.sqrt(sum(component * component for component in normal))
+    if normal_length == 0:
+        return float("inf")
+    return abs(_dot(ap, normal)) / normal_length
+
+
+def _subtract(
+    left: tuple[float, float, float],
+    right: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    return (left[0] - right[0], left[1] - right[1], left[2] - right[2])
+
+
+def _cross(
+    left: tuple[float, float, float],
+    right: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    return (
+        left[1] * right[2] - left[2] * right[1],
+        left[2] * right[0] - left[0] * right[2],
+        left[0] * right[1] - left[1] * right[0],
+    )
+
+
+def _dot(
+    left: tuple[float, float, float],
+    right: tuple[float, float, float],
+) -> float:
+    return left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
 
 
 def find_dice_page_chunk(site_dir: Path | None = None) -> Path:
