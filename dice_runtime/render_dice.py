@@ -20,7 +20,7 @@ from PIL import Image, ImageChops
 RUNTIME_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = RUNTIME_DIR.parent
 DEFAULT_TIMEOUT_MS = 60000
-DEFAULT_RESULT_TIMEOUT_MS = 45000
+DEFAULT_RESULT_TIMEOUT_MS = 8000
 PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
 
 # A single persistent browser/page is reused between render requests.
@@ -297,6 +297,8 @@ def render_dice_gif(
         "total": result["total"],
         "dice_type": dice_type,
         "dice_count": count,
+        "fallback": bool(result.get("fallback", False)),
+        "partial": bool(result.get("partial", False)),
     }
 
 
@@ -685,7 +687,7 @@ def read_roll_results(
     best_total_result: dict[str, Any] | None = None
 
     while time.time() < deadline:
-        time.sleep(0.25)
+        page.wait_for_timeout(100)
         result = parse_roll_result_snapshot(
             read_roll_result_snapshot(page), dice_count, dice_type
         )
@@ -713,6 +715,11 @@ def read_roll_result_snapshot(page: Any) -> dict[str, Any]:
         """
         () => {
           const nodes = [...document.querySelectorAll('div, span, p, h1, h2')];
+          const appResults = Array.isArray(globalThis.__astrbotDiceResults)
+            ? globalThis.__astrbotDiceResults
+                .map((value) => Number(value))
+                .filter((value) => Number.isFinite(value))
+            : [];
           const visible = nodes
             .map((node) => {
               const text = (node.textContent || '').trim();
@@ -759,7 +766,7 @@ def read_roll_result_snapshot(page: Any) -> dict[str, Any]:
                 .filter((value) => Number.isFinite(value)),
             }));
 
-          return { numericCandidates, breakdownCandidates };
+          return { appResults, numericCandidates, breakdownCandidates };
         }
         """
     )
@@ -771,6 +778,16 @@ def parse_roll_result_snapshot(
     max_face = get_dice_face_count(dice_type)
     min_total = dice_count
     max_total = dice_count * max_face
+
+    app_results = data.get("appResults", [])
+    if (
+        isinstance(app_results, list)
+        and len(app_results) >= dice_count
+        and all(isinstance(value, int | float) for value in app_results[:dice_count])
+    ):
+        results = [int(value) for value in app_results[:dice_count]]
+        if all(1 <= value <= max_face for value in results):
+            return {"results": results, "total": sum(results)}
 
     for candidate in data.get("breakdownCandidates", []):
         parts = candidate.get("parts", [])
