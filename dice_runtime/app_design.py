@@ -92,7 +92,6 @@ SOURCE_MARKERS = (
     "V={4:.84",
     "T.wakeUp&&T.wakeUp()",
     "T.position&&T.position.set&&T.position.set(...b)",
-    '{sides:10,label:"D10"}',
     "r=.1056*e",
     "n=.1056*t",
 )

@@ -3,64 +3,64 @@
     "description": "默认骰子类型",
     "type": "string",
     "default": "D6",
-    "options": ["D4", "D6", "D8", "D10", "D20"]
+    "options": ["D4", "D6", "D8", "D20"]
   },
   "default_count": {
     "description": "默认骰子数量",
     "type": "int",
     "default": 1,
-    "hint": "内置 3D 骰子页面支持 1 到 6 个骰子。"
+    "hint": "3D 骰子页面一次最多支持 1 到 6 个骰子"
   },
   "max_count": {
-    "description": "命令允许的最大骰子数量",
+    "description": "允许用户一次投掷的最大骰子数量",
     "type": "int",
     "default": 6,
-    "hint": "超过 6 的值会被限制为 6。"
+    "hint": "最大为 6；超过 6 会被限制为 6"
   },
   "duration": {
-    "description": "GIF 录制时长（毫秒）",
+    "description": "GIF 录制时长，单位毫秒",
     "type": "int",
     "default": 2400
   },
   "fps": {
-    "description": "GIF 录制帧率",
+    "description": "GIF 帧率",
     "type": "int",
     "default": 16
   },
   "browser": {
-    "description": "可选的 Chromium、Chrome 或 Edge 可执行文件路径",
+    "description": "可选的 Chromium、Chrome 或 Edge 浏览器可执行文件路径",
     "type": "string",
     "default": "",
-    "hint": "留空时会从常见安装路径和浏览器相关环境变量中自动检测。"
+    "hint": "留空时自动检测系统浏览器或 Playwright Chromium"
   },
   "auto_install_chromium": {
-    "description": "找不到浏览器时自动安装 Playwright Chromium",
+    "description": "找不到浏览器时是否自动安装 Playwright Chromium",
     "type": "bool",
     "default": true,
-    "hint": "AstrBot 会根据 requirements.txt 安装 Python 包；开启后，如果缺少浏览器二进制，还会自动执行 python -m playwright install chromium。"
+    "hint": "需要先安装 playwright Python 包；启用后会执行 python -m playwright install chromium"
   },
   "better_render_quality": {
-    "description": "等待骰子开始运动后再录制 GIF",
+    "description": "是否启用更好的 GIF 渲染质量",
     "type": "bool",
     "default": true,
-    "hint": "开启后会先等待 3D 场景稳定，Roll 后检测到骰子真正运动才开始录制，避免录到空白起始帧。关闭可略微加快响应速度。"
+    "hint": "启用后会等待 3D 场景稳定，再点击 Roll 并开始录制"
   },
   "width": {
-    "description": "渲染用浏览器视口宽度（像素）",
+    "description": "浏览器渲染视口宽度",
     "type": "int",
     "default": 900,
-    "hint": "降低此值（如 600）可减少渲染负担，加快截图速度，但画面会更窄。"
+    "hint": "建议不低于 600；过小可能裁切骰子画面"
   },
   "height": {
-    "description": "渲染用浏览器视口高度（像素）",
+    "description": "浏览器渲染视口高度",
     "type": "int",
     "default": 1400,
-    "hint": "降低此值（如 800）可减少渲染负担，加快截图速度。骰子 canvas 会自动裁剪，实际 GIF 尺寸不受影响。"
+    "hint": "建议不低于 800；过小可能裁切 canvas 或 GIF 画面"
   },
   "parallel_result": {
-    "description": "并行读取骰子结果（加速模式）",
+    "description": "是否启用更快的结果读取模式",
     "type": "bool",
     "default": false,
-    "hint": "开启后，帧捕获完成后立即在后台线程中读取骰子结果，与等待动画播完的过程并行执行，可节省约 0.5–1 秒。如遇结果读取不稳定可关闭。"
+    "hint": "启用后在 GIF 捕获完成后立即读取页面结果，可略微减少等待时间"
   }
 }
