@@ -39,6 +39,12 @@
     "default": true,
     "hint": "AstrBot installs Python packages from requirements.txt. This option also runs python -m playwright install chromium when the browser binary is missing."
   },
+  "better_render_quality": {
+    "description": "Wait for the full 3D scene before recording the GIF",
+    "type": "bool",
+    "default": true,
+    "hint": "When enabled, the renderer waits for the original page to finish drawing, then clicks the Roll button and records from that stable scene."
+  },
   "width": {
     "description": "Browser viewport width used for rendering",
     "type": "int",

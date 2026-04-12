@@ -14,7 +14,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 RUNTIME_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = RUNTIME_DIR.parent
@@ -64,6 +64,7 @@ def render_dice_gif(
     site_dir: Path | None = None,
     width: int = 900,
     height: int = 1400,
+    better_render_quality: bool = True,
 ) -> dict[str, Any]:
     site_dir = Path(site_dir or (PROJECT_DIR / "dice_roller_app")).resolve()
     output_dir = Path(output_dir or (RUNTIME_DIR / "outputs")).resolve()
@@ -111,9 +112,14 @@ def render_dice_gif(
                 wait_for_dice_app(page)
                 clip = get_capture_clip(page)
                 configure_dice(page, dice_type=dice_type, dice_count=count)
+                if better_render_quality:
+                    wait_for_stable_render(page, clip)
                 baseline_frame = capture_clip_png(page, clip)
                 trigger_roll(page)
-                wait_for_animation_start(page, clip, baseline_frame, 2000)
+                if better_render_quality:
+                    page.wait_for_timeout(140)
+                else:
+                    wait_for_animation_start(page, clip, baseline_frame, 2000)
                 frames = capture_frames(page, clip, total_frames, frame_delay)
                 write_gif(frames, output_path, frame_delay)
                 page.wait_for_timeout(max(2500, duration))
@@ -377,6 +383,37 @@ def capture_clip_png(page: Any, clip: dict[str, int]) -> Image.Image:
     return Image.open(BytesIO(png_bytes)).convert("RGBA")
 
 
+def count_changed_pixels(before: Image.Image, after: Image.Image) -> int:
+    diff = ImageChops.difference(before.convert("RGBA"), after.convert("RGBA"))
+    alpha = diff.convert("L")
+    return sum(1 for pixel in alpha.getdata() if pixel)
+
+
+def wait_for_stable_render(
+    page: Any,
+    clip: dict[str, int],
+    stable_samples: int = 3,
+    interval_ms: int = 160,
+    max_wait_ms: int = 3000,
+    changed_pixel_tolerance: int = 40,
+) -> None:
+    previous_frame = capture_clip_png(page, clip)
+    stable_count = 0
+    deadline = time.time() + (max_wait_ms / 1000.0)
+
+    while time.time() < deadline:
+        page.wait_for_timeout(interval_ms)
+        current_frame = capture_clip_png(page, clip)
+        changed_pixels = count_changed_pixels(previous_frame, current_frame)
+        if changed_pixels <= changed_pixel_tolerance:
+            stable_count += 1
+            if stable_count >= stable_samples:
+                return
+        else:
+            stable_count = 0
+        previous_frame = current_frame
+
+
 def trigger_roll(page: Any) -> None:
     page.evaluate(
         """
@@ -401,7 +438,7 @@ def wait_for_animation_start(
     deadline = time.time() + (max_wait_ms / 1000.0)
     while time.time() < deadline:
         current_frame = capture_clip_png(page, clip)
-        if list(current_frame.getdata()) != list(baseline_frame.getdata()):
+        if count_changed_pixels(baseline_frame, current_frame) > 0:
             return
         page.wait_for_timeout(100)
     raise RuntimeError("Timed out waiting for animation to start")

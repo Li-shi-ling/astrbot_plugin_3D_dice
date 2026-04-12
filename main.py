@@ -96,6 +96,7 @@ class ThreeDDicePlugin(Star):
                 output_dir=self.render_output_dir,
                 width=options.width,
                 height=options.height,
+                better_render_quality=options.better_render_quality,
             )
         except Exception as exc:
             logger.exception("3D dice render failed")
