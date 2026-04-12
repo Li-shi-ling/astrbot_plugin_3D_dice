@@ -193,6 +193,10 @@ def render_dice_gif_once(
                 append_debug(diagnostics, f"navigation completed url={page.url}")
                 wait_for_dice_app(page, timeout_ms)
                 append_debug(diagnostics, "dice app ready")
+                clip = get_capture_clip(page)
+                append_debug(
+                    diagnostics, f"capture clip={json.dumps(clip, ensure_ascii=False)}"
+                )
                 configure_dice(
                     page,
                     dice_type=request["dice_type"],
@@ -201,10 +205,6 @@ def render_dice_gif_once(
                 append_debug(
                     diagnostics,
                     f"dice configured type={request['dice_type']} count={int(request['count'] or 1)}",
-                )
-                clip = get_capture_clip(page)
-                append_debug(
-                    diagnostics, f"capture clip={json.dumps(clip, ensure_ascii=False)}"
                 )
                 baseline_frame = capture_clip_png(page, clip)
                 append_debug(diagnostics, "captured baseline frame")
