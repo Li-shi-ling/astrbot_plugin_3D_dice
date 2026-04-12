@@ -216,7 +216,9 @@ def render_dice_gif_once(
                     max_animation_wait_ms,
                 )
                 append_debug(diagnostics, "animation start detected")
-                frames = capture_frames(page, clip, total_frames, frame_delay)
+                frames = capture_frames(
+                    page, clip, total_frames, frame_delay, diagnostics=diagnostics
+                )
                 append_debug(
                     diagnostics,
                     f"captured frames count={len(frames)} frame_delay_ms={frame_delay}",
@@ -536,30 +538,66 @@ def get_capture_clip(page: Any) -> dict[str, int]:
     box = page.evaluate(
         """
         () => {
-          const canvas = document.querySelector("canvas");
-          if (!canvas) return null;
+          const canvases = [...document.querySelectorAll("canvas")]
+            .map((canvas, index) => {
+              const rect = canvas.getBoundingClientRect();
+              const style = getComputedStyle(canvas);
+              return {
+                index,
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+                top: Math.round(rect.top),
+                left: Math.round(rect.left),
+                visible:
+                  style.display !== "none" &&
+                  style.visibility !== "hidden" &&
+                  Number(style.opacity || "1") > 0 &&
+                  rect.width > 0 &&
+                  rect.height > 0,
+              };
+            })
+            .filter((item) => item.visible)
+            .sort((a, b) => b.width * b.height - a.width * a.height);
+
+          const canvasInfo = canvases[0];
+          if (!canvasInfo) {
+            return { clip: null, canvases };
+          }
+
+          const canvas = document.querySelectorAll("canvas")[canvasInfo.index];
           const rect = canvas.getBoundingClientRect();
           const top = Math.max(0, rect.top - 40);
           const left = Math.max(0, rect.left - 24);
           const right = Math.min(window.innerWidth, rect.right + 24);
           const bottom = Math.min(window.innerHeight, rect.bottom + 80);
+
           return {
-            x: left,
-            y: top,
-            width: right - left,
-            height: bottom - top,
+            clip: {
+              x: left,
+              y: top,
+              width: right - left,
+              height: bottom - top,
+            },
+            canvases,
           };
         }
         """
     )
-    if not box:
+    if not box or not box.get("clip"):
         raise RuntimeError("Could not locate dice canvas clip region")
-    return {
-        "x": round(box["x"]),
-        "y": round(box["y"]),
-        "width": round(box["width"]),
-        "height": round(box["height"]),
+    clip = {
+        "x": round(box["clip"]["x"]),
+        "y": round(box["clip"]["y"]),
+        "width": round(box["clip"]["width"]),
+        "height": round(box["clip"]["height"]),
     }
+    if clip["width"] < 120 or clip["height"] < 120:
+        raise RuntimeError(
+            "Dice canvas clip region is unexpectedly small: "
+            f"{json.dumps(clip, ensure_ascii=False)}; "
+            f"canvases={json.dumps(box.get('canvases', []), ensure_ascii=False)}"
+        )
+    return clip
 
 
 def trigger_roll(page: Any) -> None:
@@ -578,18 +616,29 @@ def trigger_roll(page: Any) -> None:
 
 
 def capture_frames(
-    page: Any, clip: dict[str, int], total_frames: int, delay_ms: int
+    page: Any,
+    clip: dict[str, int],
+    total_frames: int,
+    delay_ms: int,
+    diagnostics: list[str] | None = None,
 ) -> list[Image.Image]:
     frames: list[Image.Image] = []
     for index in range(total_frames):
         frames.append(capture_clip_png(page, clip))
+        if diagnostics is not None and (
+            index == 0 or index == total_frames - 1 or (index + 1) % 10 == 0
+        ):
+            append_debug(
+                diagnostics,
+                f"captured frame {index + 1}/{total_frames}",
+            )
         if index < total_frames - 1:
             time.sleep(delay_ms / 1000)
     return frames
 
 
 def capture_clip_png(page: Any, clip: dict[str, int]) -> Image.Image:
-    png_buffer = page.screenshot(clip=clip, type="png")
+    png_buffer = page.screenshot(clip=clip, type="png", timeout=15000)
     return Image.open(BytesIO(png_buffer)).convert("RGBA")
 
 
