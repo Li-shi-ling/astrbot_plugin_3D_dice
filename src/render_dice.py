@@ -207,6 +207,8 @@ def render_dice_gif_once(
                 append_debug(diagnostics, f"navigation completed url={page.url}")
                 wait_for_dice_app(page, timeout_ms)
                 append_debug(diagnostics, "dice app ready")
+                optimize_page_for_capture(page)
+                append_debug(diagnostics, "page optimized for capture")
                 clip = get_capture_clip(page)
                 append_debug(
                     diagnostics, f"capture clip={json.dumps(clip, ensure_ascii=False)}"
@@ -472,6 +474,31 @@ def collect_page_state(page: Any) -> dict[str, Any]:
     )
 
 
+def optimize_page_for_capture(page: Any) -> None:
+    page.evaluate(
+        """
+        () => {
+          document.documentElement.style.background = "#0b1422";
+          document.body.style.background = "#0b1422";
+          document.body.style.overflow = "hidden";
+
+          const canvas = document.querySelector("canvas");
+          if (!canvas) {
+            return;
+          }
+          const canvasRect = canvas.getBoundingClientRect();
+          canvas.style.display = "block";
+          canvas.style.margin = "0 auto";
+          window.scrollTo({
+            top: Math.max(0, canvasRect.top + window.scrollY - 120),
+            behavior: "instant",
+          });
+        }
+        """
+    )
+    time.sleep(0.2)
+
+
 def configure_dice(page: Any, *, dice_type: str, dice_count: int) -> None:
     page.evaluate(
         """
@@ -601,10 +628,11 @@ def get_capture_clip(page: Any) -> dict[str, int]:
             return { clip: null, canvases: allCanvases };
           }
 
-          const top = Math.max(0, rect.top - 40);
-          const left = Math.max(0, rect.left - 24);
-          const right = Math.min(window.innerWidth, rect.right + 24);
-          const bottom = Math.min(window.innerHeight, rect.bottom + 80);
+          const padding = 8;
+          const top = Math.max(0, rect.top - padding);
+          const left = Math.max(0, rect.left - padding);
+          const right = Math.min(window.innerWidth, rect.right + padding);
+          const bottom = Math.min(window.innerHeight, rect.bottom + padding);
 
           return {
             clip: {

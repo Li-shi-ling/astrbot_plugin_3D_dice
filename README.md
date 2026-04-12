@@ -46,6 +46,7 @@ The renderer supports Linux servers without a desktop environment.
 - If your server is known to require a virtual display, install `xvfb` and set `linux_render_mode` to `xvfb`
 - The renderer enables software WebGL automatically on Linux (`llvmpipe` + SwiftShader/EGL)
 - On low-power devices, set `render_preset` to `fast`
+- The runtime now hides non-dice UI before capture to reduce rendering overhead and keep the GIF focused on the dice
 
 ## Optional config
 
