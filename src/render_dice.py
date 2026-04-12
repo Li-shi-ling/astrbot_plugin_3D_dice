@@ -56,12 +56,20 @@ def render_dice_gif(
 
     try:
         return render_dice_gif_once(request)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "Playwright renderer timed out while waiting for the browser process."
+        ) from exc
     except Exception as exc:
         if should_retry_with_xvfb(exc, resolved_linux_render_mode):
             fallback_request = dict(request)
             fallback_request["linux_render_mode"] = "xvfb"
             try:
                 return render_dice_gif_via_subprocess(fallback_request)
+            except subprocess.TimeoutExpired as retry_exc:
+                raise RuntimeError(
+                    "Playwright renderer timed out in xvfb fallback mode."
+                ) from retry_exc
             except subprocess.CalledProcessError as retry_exc:
                 retry_details = (retry_exc.stderr or "").strip()
                 if not retry_details:
@@ -654,6 +662,7 @@ def render_dice_gif_via_subprocess(request: dict[str, Any]) -> dict[str, Any]:
         text=True,
         encoding="utf-8",
         env=build_render_env(),
+        timeout=(int(request.get("timeout") or DEFAULT_TIMEOUT_MS) / 1000) + 15,
     )
     stdout = completed.stdout.strip().splitlines()
     if not stdout:
