@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import queue
 import secrets
 import socketserver
 import subprocess
 import sys
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future
 from dataclasses import dataclass
 from functools import partial
 from http.server import SimpleHTTPRequestHandler
@@ -22,15 +24,16 @@ RUNTIME_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = RUNTIME_DIR.parent
 DEFAULT_TIMEOUT_MS = 60000
 DEFAULT_RESULT_TIMEOUT_MS = 8000
+CONFIGURE_TIMEOUT_MS = 5000
 PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
 
 # A single persistent browser/page is reused between render requests.
 _session_lock = threading.Lock()
 _persisted_session: PersistedBrowserSession | None = None
-_render_executor = ThreadPoolExecutor(
-    max_workers=1,
-    thread_name_prefix="astrbot-3d-dice-render",
-)
+_render_queue: (
+    queue.Queue[tuple[Any, tuple[Any, ...], dict[str, Any], Future[Any]]] | None
+) = None
+_render_worker_lock = threading.Lock()
 _render_thread_id: int | None = None
 
 
@@ -227,19 +230,43 @@ def get_sync_playwright() -> Any:
 
 
 def _run_in_render_thread(function: Any, *args: Any, **kwargs: Any) -> Any:
-    global _render_thread_id
     if threading.get_ident() == _render_thread_id:
         return function(*args, **kwargs)
-    future = _render_executor.submit(_render_thread_entry, function, args, kwargs)
+    worker_queue = _ensure_render_worker()
+    future: Future[Any] = Future()
+    worker_queue.put((function, args, kwargs, future))
     return future.result()
 
 
-def _render_thread_entry(
-    function: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
-) -> Any:
+def _ensure_render_worker() -> queue.Queue[
+    tuple[Any, tuple[Any, ...], dict[str, Any], Future[Any]]
+]:
+    global _render_queue
+    with _render_worker_lock:
+        if _render_queue is None:
+            _render_queue = queue.Queue()
+            worker = threading.Thread(
+                target=_render_worker_loop,
+                name="astrbot-3d-dice-render",
+                daemon=True,
+            )
+            worker.start()
+        return _render_queue
+
+
+def _render_worker_loop() -> None:
     global _render_thread_id
     _render_thread_id = threading.get_ident()
-    return function(*args, **kwargs)
+    asyncio.set_event_loop(None)
+    assert _render_queue is not None
+    while True:
+        function, args, kwargs, future = _render_queue.get()
+        if future.set_running_or_notify_cancel():
+            try:
+                asyncio.set_event_loop(None)
+                future.set_result(function(*args, **kwargs))
+            except BaseException as exc:
+                future.set_exception(exc)
 
 
 def render_dice_gif(
@@ -531,6 +558,7 @@ def configure_dice(page: Any, dice_type: str, dice_count: int) -> None:
         }
         """,
         arg=dice_type,
+        timeout=CONFIGURE_TIMEOUT_MS,
     )
     page.evaluate(
         """
@@ -553,6 +581,7 @@ def configure_dice(page: Any, dice_type: str, dice_count: int) -> None:
         }
         """,
         arg=dice_type,
+        timeout=CONFIGURE_TIMEOUT_MS,
     )
 
     if dice_count < 1:
@@ -599,6 +628,7 @@ def configure_dice(page: Any, dice_type: str, dice_count: int) -> None:
         }
         """,
         arg=dice_count,
+        timeout=CONFIGURE_TIMEOUT_MS,
     )
     page.wait_for_timeout(300)
 
