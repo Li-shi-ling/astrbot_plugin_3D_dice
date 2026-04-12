@@ -368,7 +368,7 @@ def configure_dice(page: Any, *, dice_type: str, dice_count: int) -> None:
           return buttons.some((button) => (button.textContent || "").trim() === label);
         }
         """,
-        dice_type,
+        arg=dice_type,
     )
     page.evaluate(
         """
@@ -388,7 +388,7 @@ def configure_dice(page: Any, *, dice_type: str, dice_count: int) -> None:
           return (dieButton?.textContent || "").trim() === label;
         }
         """,
-        dice_type,
+        arg=dice_type,
     )
     current_count = page.evaluate(
         """
@@ -428,7 +428,7 @@ def configure_dice(page: Any, *, dice_type: str, dice_count: int) -> None:
               return match ? Number(match[1]) === expectedCount : false;
             }
             """,
-            dice_count,
+            arg=dice_count,
         )
     time.sleep(0.3)
 
