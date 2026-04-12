@@ -207,9 +207,12 @@ marimo/_lsp/
 __marimo__/
 
 outputs/
+dice_runtime/outputs/
+test_live/outputs/
 node_modules/
 .idea/
+dice_roller_app/*.md
+test_live/
+test/
 CONSTRAINTS.md
 TODO.md
-test/
-test_live/
