@@ -14,7 +14,7 @@ Supported dice: `D4`, `D6`, `D8`, `D20`.
 
 ## Runtime
 
-The renderer uses the bundled `rollmydice_app` static site, Playwright, and a local Chromium/Chrome/Edge executable. Set `browser` in the plugin config if auto-detection cannot find a browser.
+The renderer uses the bundled `dice_roller_app` static site, Playwright, and a local Chromium/Chrome/Edge executable. Set `browser` in the plugin config if auto-detection cannot find a browser.
 
 ## Tests
 

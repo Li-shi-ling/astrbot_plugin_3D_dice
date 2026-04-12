@@ -1,1 +1,0 @@
-self.__next_f.push([1,"1:HL[\"/_next/static/media/4473ecc91f70f139-s.p.woff\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff\"}]\n2:HL[\"/_next/static/media/463dafcda517f24f-s.p.woff\",\"font\",{\"crossOrigin\":\"\",\"type\":\"font/woff\"}]\n3:HL[\"/_next/static/css/8ea92e62f01bac5a.css\",\"style\"]\n"])

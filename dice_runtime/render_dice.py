@@ -31,7 +31,7 @@ def render_dice_gif(
     width: int = 900,
     height: int = 1400,
 ) -> dict[str, Any]:
-    site_dir = Path(site_dir or (PROJECT_DIR / "rollmydice_app")).resolve()
+    site_dir = Path(site_dir or (PROJECT_DIR / "dice_roller_app")).resolve()
     output_dir = Path(output_dir or (RUNTIME_DIR / "outputs")).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / (output_name or default_output_name(dice_type, count))
