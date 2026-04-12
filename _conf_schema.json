@@ -1,57 +1,57 @@
 {
   "default_dice_type": {
-    "description": "Default dice type",
+    "description": "默认骰子类型",
     "type": "string",
     "default": "D6",
     "options": ["D4", "D6", "D8", "D20"]
   },
   "default_count": {
-    "description": "Default dice count",
+    "description": "默认骰子数量",
     "type": "int",
     "default": 1,
-    "hint": "The bundled dice app supports 1 to 6 dice."
+    "hint": "内置 3D 骰子页面支持 1 到 6 个骰子。"
   },
   "max_count": {
-    "description": "Maximum dice count accepted by commands",
+    "description": "命令允许的最大骰子数量",
     "type": "int",
     "default": 6,
-    "hint": "Values above 6 are capped because the bundled UI only supports up to 6 dice."
+    "hint": "超过 6 的值会被限制为 6。"
   },
   "duration": {
-    "description": "GIF capture duration in milliseconds",
+    "description": "GIF 录制时长（毫秒）",
     "type": "int",
     "default": 2400
   },
   "fps": {
-    "description": "GIF capture frame rate",
+    "description": "GIF 录制帧率",
     "type": "int",
     "default": 16
   },
   "browser": {
-    "description": "Optional Chromium, Chrome, or Edge executable path",
+    "description": "可选的 Chromium、Chrome 或 Edge 可执行文件路径",
     "type": "string",
     "default": "",
-    "hint": "Leave empty to auto-detect from common paths and browser-related environment variables."
+    "hint": "留空时会从常见安装路径和浏览器相关环境变量中自动检测。"
   },
   "auto_install_chromium": {
-    "description": "Auto-install Playwright Chromium when no browser is found",
+    "description": "找不到浏览器时自动安装 Playwright Chromium",
     "type": "bool",
     "default": true,
-    "hint": "AstrBot installs Python packages from requirements.txt. This option also runs python -m playwright install chromium when the browser binary is missing."
+    "hint": "AstrBot 会根据 requirements.txt 安装 Python 包；开启后，如果缺少浏览器二进制，还会自动执行 python -m playwright install chromium。"
   },
   "better_render_quality": {
-    "description": "Wait for the full 3D scene before recording the GIF",
+    "description": "等待 3D 场景完整渲染后再录制 GIF",
     "type": "bool",
     "default": true,
-    "hint": "When enabled, the renderer waits for the original page to finish drawing, then clicks the Roll button and records from that stable scene."
+    "hint": "开启后会先等待原页面完整绘制，并从稳定场景开始录制，画面质量更好。"
   },
   "width": {
-    "description": "Browser viewport width used for rendering",
+    "description": "渲染用浏览器视口宽度",
     "type": "int",
     "default": 900
   },
   "height": {
-    "description": "Browser viewport height used for rendering",
+    "description": "渲染用浏览器视口高度",
     "type": "int",
     "default": 1400
   }
