@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import shutil
 import socketserver
 import subprocess
@@ -222,7 +223,12 @@ def render_dice_gif_once(
                 )
                 write_gif(frames, output_path, frame_delay)
                 append_debug(diagnostics, f"gif written to {output_path}")
-                result = read_roll_results(page, int(request["count"] or 1))
+                result = read_roll_results(
+                    page,
+                    int(request["count"] or 1),
+                    str(request["dice_type"] or "D6"),
+                    diagnostics,
+                )
                 append_debug(
                     diagnostics,
                     f"roll results parsed results={result['results']} total={result['total']}",
@@ -639,68 +645,109 @@ def write_gif(frames: list[Image.Image], output_file: Path, delay_ms: int) -> No
     )
 
 
-def read_roll_results(page: Any, dice_count: int) -> dict[str, Any]:
-    time.sleep(0.2)
-    result = page.evaluate(
-        """
-        (expectedCount) => {
-          const nodes = [...document.querySelectorAll("div, span, p, h1, h2")];
-          const visible = nodes
-            .map((node) => {
-              const text = (node.textContent || "").trim();
-              const style = getComputedStyle(node);
-              const rect = node.getBoundingClientRect();
+def read_roll_results(
+    page: Any, dice_count: int, dice_type: str, diagnostics: list[str] | None = None
+) -> dict[str, Any]:
+    max_face = get_dice_face_count(dice_type)
+    min_total = dice_count
+    max_total = dice_count * max_face
+
+    for attempt in range(1, 9):
+        time.sleep(0.25)
+        result = page.evaluate(
+            """
+            () => {
+              const nodes = [...document.querySelectorAll("div, span, p, h1, h2")];
+              const visible = nodes
+                .map((node) => {
+                  const text = (node.textContent || "").trim();
+                  const style = getComputedStyle(node);
+                  const rect = node.getBoundingClientRect();
+                  return {
+                    text,
+                    display: style.display,
+                    visibility: style.visibility,
+                    opacity: Number(style.opacity || "1"),
+                    fontSize: Number.parseFloat(style.fontSize || "0"),
+                    fontWeight: Number.parseInt(style.fontWeight || "400", 10) || 400,
+                    top: Math.round(rect.top),
+                    left: Math.round(rect.left),
+                    width: Math.round(rect.width),
+                    height: Math.round(rect.height),
+                  };
+                })
+                .filter((item) =>
+                  item.text &&
+                  item.display !== "none" &&
+                  item.visibility !== "hidden" &&
+                  item.opacity > 0 &&
+                  item.width > 0 &&
+                  item.height > 0
+                );
+              const numericCandidates = visible
+                .filter((item) => /^\\d+$/.test(item.text))
+                .sort((a, b) => b.fontSize - a.fontSize || a.top - b.top)
+                .map((item) => ({
+                  ...item,
+                  value: Number(item.text),
+                }));
+              const breakdownCandidates = visible
+                .filter((item) => /^\\d+(?:\\s*\\+\\s*\\d+)+$/.test(item.text))
+                .sort((a, b) => b.fontSize - a.fontSize || a.top - b.top)
+                .map((item) => ({
+                  ...item,
+                  parts: item.text
+                    .split("+")
+                    .map((part) => Number(part.trim()))
+                    .filter((value) => Number.isFinite(value)),
+                }));
               return {
-                text,
-                display: style.display,
-                visibility: style.visibility,
-                opacity: Number(style.opacity || "1"),
-                fontSize: Number.parseFloat(style.fontSize || "0"),
-                fontWeight: Number.parseInt(style.fontWeight || "400", 10) || 400,
-                top: rect.top,
-                left: rect.left,
-                width: rect.width,
-                height: rect.height,
+                numericCandidates,
+                breakdownCandidates,
+                bodyText: (document.body?.innerText || "").trim().replace(/\\s+/g, " ").slice(0, 500),
               };
-            })
-            .filter((item) =>
-              item.text &&
-              item.display !== "none" &&
-              item.visibility !== "hidden" &&
-              item.opacity > 0 &&
-              item.width > 0 &&
-              item.height > 0
-            );
-          const totalCandidate = visible
-            .filter((item) => /^\\d+$/.test(item.text) && item.fontWeight >= 600 && item.fontSize >= 28)
-            .sort((a, b) => b.fontSize - a.fontSize || a.top - b.top)[0];
-          const breakdownCandidate = visible
-            .filter((item) => /^\\d+(?:\\s*\\+\\s*\\d+)+$/.test(item.text) && item.fontWeight >= 600)
-            .sort((a, b) => b.fontSize - a.fontSize || a.top - b.top)[0];
-          let results = [];
-          if (breakdownCandidate) {
-            results = breakdownCandidate.text
-              .split("+")
-              .map((part) => Number(part.trim()))
-              .filter((value) => Number.isFinite(value));
-          }
-          const total = totalCandidate
-            ? Number(totalCandidate.text)
-            : results.reduce((sum, value) => sum + value, 0);
-          if (!results.length && Number.isFinite(total)) {
-            results = [total];
-          }
-          if (results.length > expectedCount) {
-            results = results.slice(0, expectedCount);
-          }
-          return { results, total };
-        }
-        """,
-        dice_count,
+            }
+            """
+        )
+
+        numeric_candidates = result.get("numericCandidates", [])
+        breakdown_candidates = result.get("breakdownCandidates", [])
+
+        if diagnostics is not None:
+            append_debug(
+                diagnostics,
+                "roll result candidates "
+                f"attempt={attempt} numeric={json.dumps(numeric_candidates[:8], ensure_ascii=False)} "
+                f"breakdown={json.dumps(breakdown_candidates[:4], ensure_ascii=False)}",
+            )
+
+        for candidate in breakdown_candidates:
+            parts = candidate.get("parts", [])
+            if len(parts) == dice_count and all(
+                1 <= int(value) <= max_face for value in parts
+            ):
+                total = sum(int(value) for value in parts)
+                if min_total <= total <= max_total:
+                    return {"results": [int(value) for value in parts], "total": total}
+
+        for candidate in numeric_candidates:
+            value = candidate.get("value")
+            if not isinstance(value, int):
+                continue
+            if min_total <= value <= max_total:
+                return {"results": [value], "total": value}
+
+    raise RuntimeError(
+        f"Could not parse a valid {dice_type} roll result from the page. "
+        f"Expected total in range [{min_total}, {max_total}]."
     )
-    if not isinstance(result.get("results"), list) or not result["results"]:
-        raise RuntimeError("Could not parse roll results from the page")
-    return result
+
+
+def get_dice_face_count(dice_type: str) -> int:
+    match = re.fullmatch(r"D(\\d+)", dice_type.strip().upper())
+    if not match:
+        raise ValueError(f"Unsupported dice type: {dice_type}")
+    return int(match.group(1))
 
 
 def normalize_linux_render_mode(value: str | None) -> str | None:
