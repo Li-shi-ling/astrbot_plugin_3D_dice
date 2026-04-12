@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import socketserver
 import time
 from functools import partial
@@ -16,7 +17,7 @@ from playwright.sync_api import sync_playwright
 RUNTIME_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = RUNTIME_DIR.parent
 DEFAULT_TIMEOUT_MS = 60000
-DEFAULT_RESULT_TIMEOUT_MS = 15000
+DEFAULT_RESULT_TIMEOUT_MS = 45000
 
 
 def render_dice_gif(
@@ -355,6 +356,7 @@ def read_roll_results(
     dice_count: int,
     dice_type: str,
     timeout_ms: int = DEFAULT_RESULT_TIMEOUT_MS,
+    fallback_random: bool = True,
 ) -> dict[str, Any]:
     deadline = time.time() + (max(1000, timeout_ms) / 1000.0)
     best_total_result: dict[str, Any] | None = None
@@ -372,7 +374,15 @@ def read_roll_results(
     if best_total_result:
         return best_total_result
 
-    raise RuntimeError("Could not parse dice results from page")
+    if fallback_random:
+        return make_fallback_roll_result(dice_count, dice_type)
+
+    snapshot = read_roll_result_snapshot(page)
+    raise RuntimeError(
+        "Could not parse dice results from page. "
+        f"numeric={snapshot.get('numericCandidates', [])[:5]!r}, "
+        f"breakdown={snapshot.get('breakdownCandidates', [])[:5]!r}"
+    )
 
 
 def read_roll_result_snapshot(page: Any) -> dict[str, Any]:
@@ -465,6 +475,16 @@ def parse_roll_result_snapshot(
 
 def is_likely_total_candidate(candidate: dict[str, Any]) -> bool:
     return float(candidate.get("fontSize") or 0) >= 40
+
+
+def make_fallback_roll_result(dice_count: int, dice_type: str) -> dict[str, Any]:
+    max_face = get_dice_face_count(dice_type)
+    results = [secrets.randbelow(max_face) + 1 for _ in range(dice_count)]
+    return {
+        "results": results,
+        "total": sum(results),
+        "fallback": True,
+    }
 
 
 def get_dice_face_count(dice_type: str) -> int:

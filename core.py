@@ -129,10 +129,13 @@ def format_success_text(result: dict[str, Any]) -> str:
     results = [int(value) for value in result["results"]]
     total = int(result["total"])
     dice_count = int(result.get("dice_count") or len(results) or 1)
+    suffix = (
+        " (fallback result; visual parsing timed out)" if result.get("fallback") else ""
+    )
     if not results:
-        return f"3D dice result: {dice_type} x {dice_count}; total {total}"
+        return f"3D dice result: {dice_type} x {dice_count}; total {total}{suffix}"
     detail = " + ".join(str(value) for value in results)
-    return f"3D dice result: {dice_type} x {len(results)} = {detail}; total {total}"
+    return f"3D dice result: {dice_type} x {len(results)} = {detail}; total {total}{suffix}"
 
 
 def usage_text(max_count: int = MAX_APP_DICE_COUNT) -> str:
