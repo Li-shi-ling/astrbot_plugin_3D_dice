@@ -1,3 +1,10 @@
+"""Playwright-based dice renderer used by the AstrBot plugin runtime.
+
+This module is the only supported rendering path. The old Node/Puppeteer
+prototype files may still exist in the repository as leftovers, but the plugin
+does not invoke them anymore.
+"""
+
 import argparse
 import base64
 import json
@@ -651,6 +658,20 @@ def capture_frames(
 
 
 def capture_clip_png(page: Any, clip: dict[str, int]) -> Image.Image:
+    screenshot_clip = {
+        "x": clip["x"],
+        "y": clip["y"],
+        "width": clip["width"],
+        "height": clip["height"],
+    }
+    try:
+        png_buffer = page.screenshot(clip=screenshot_clip, type="png", timeout=15000)
+        screenshot_image = Image.open(BytesIO(png_buffer)).convert("RGBA")
+        if not is_probably_blank_image(screenshot_image):
+            return screenshot_image
+    except Exception:
+        pass
+
     canvas_index = clip.get("canvasIndex")
     if isinstance(canvas_index, int):
         canvas_png_base64 = page.evaluate(
@@ -675,14 +696,27 @@ def capture_clip_png(page: Any, clip: dict[str, int]) -> Image.Image:
             png_buffer = base64.b64decode(canvas_png_base64)
             return Image.open(BytesIO(png_buffer)).convert("RGBA")
 
-    screenshot_clip = {
-        "x": clip["x"],
-        "y": clip["y"],
-        "width": clip["width"],
-        "height": clip["height"],
-    }
     png_buffer = page.screenshot(clip=screenshot_clip, type="png", timeout=15000)
     return Image.open(BytesIO(png_buffer)).convert("RGBA")
+
+
+def is_probably_blank_image(image: Image.Image) -> bool:
+    width, height = image.size
+    if width == 0 or height == 0:
+        return True
+
+    sample = image.resize((min(32, width), min(32, height)))
+    pixels = list(sample.getdata())
+    if not pixels:
+        return True
+
+    first_pixel = pixels[0]
+    different_pixels = sum(1 for pixel in pixels if pixel != first_pixel)
+    if different_pixels <= max(2, len(pixels) // 100):
+        return True
+
+    alpha_values = [pixel[3] for pixel in pixels]
+    return max(alpha_values, default=0) == 0
 
 
 def wait_for_animation_start(
