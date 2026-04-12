@@ -66,7 +66,7 @@ class ThreeDDicePlugin(Star):
         if setup_result.installed:
             logger.info("3D dice installed Playwright Chromium automatically.")
 
-    async def destroy(self) -> None:
+    async def terminate(self) -> None:
         """插件卸载时关闭持久化浏览器会话。"""
         await asyncio.to_thread(close_persisted_session)
 

@@ -23,16 +23,13 @@ DEFAULT_TIMEOUT_MS = 60000
 DEFAULT_RESULT_TIMEOUT_MS = 45000
 PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
 
-# ── 浏览器实例复用（建议一）────────────────────────────────────────────
-# 全局持久化的浏览器/页面状态，由 PersistedBrowserSession 管理。
-# 插件通过 get_persisted_session() 获取单例，首次调用时启动浏览器并加载页面；
-# 后续请求直接复用已就绪的页面，跳过冷启动开销。
+# A single persistent browser/page is reused between render requests.
 _session_lock = threading.Lock()
-_persisted_session: "PersistedBrowserSession | None" = None
+_persisted_session: PersistedBrowserSession | None = None
 
 
 class PersistedBrowserSession:
-    """持久化浏览器会话：浏览器和页面在多次投骰请求间保持存活。"""
+    """Persistent browser session reused between dice renders."""
 
     def __init__(
         self,
@@ -54,6 +51,7 @@ class PersistedBrowserSession:
         self._server: StaticServer | None = None
         self._clip: dict[str, int] | None = None
         self._ready = False
+        self.render_lock = threading.Lock()
 
     def start(self) -> None:
         sync_playwright = get_sync_playwright()
@@ -82,13 +80,15 @@ class PersistedBrowserSession:
         self._page = context.new_page()
         self._page.set_default_timeout(self.timeout_ms)
         self._page.set_default_navigation_timeout(self.timeout_ms)
-        self._page.goto(base_url, wait_until="domcontentloaded", timeout=self.timeout_ms)
+        self._page.goto(
+            base_url, wait_until="domcontentloaded", timeout=self.timeout_ms
+        )
         wait_for_dice_app(self._page)
         self._clip = get_capture_clip(self._page)
         self._ready = True
 
     def is_alive(self) -> bool:
-        """检查页面是否仍然可用。"""
+        """Return whether the persisted page still accepts commands."""
         if not self._ready or self._page is None:
             return False
         try:
@@ -96,6 +96,23 @@ class PersistedBrowserSession:
             return True
         except Exception:
             return False
+
+    def matches(
+        self,
+        browser_path: str,
+        site_dir: Path,
+        width: int,
+        height: int,
+        timeout_ms: int,
+    ) -> bool:
+        """Return whether this session was created with the requested settings."""
+        return (
+            self.browser_path == browser_path
+            and self.site_dir == site_dir
+            and self.width == width
+            and self.height == height
+            and self.timeout_ms == timeout_ms
+        )
 
     def get_page_and_clip(self) -> tuple[Any, dict[str, int]]:
         return self._page, self._clip  # type: ignore[return-value]
@@ -130,10 +147,19 @@ def get_persisted_session(
     height: int,
     timeout_ms: int,
 ) -> PersistedBrowserSession:
-    """获取（或重建）全局持久化浏览器会话。线程安全。"""
+    """Return or recreate the global persistent browser session."""
     global _persisted_session
     with _session_lock:
-        if _persisted_session is not None and not _persisted_session.is_alive():
+        if _persisted_session is not None and (
+            not _persisted_session.is_alive()
+            or not _persisted_session.matches(
+                browser_path=browser_path,
+                site_dir=site_dir,
+                width=width,
+                height=height,
+                timeout_ms=timeout_ms,
+            )
+        ):
             _persisted_session.close()
             _persisted_session = None
 
@@ -152,7 +178,7 @@ def get_persisted_session(
 
 
 def close_persisted_session() -> None:
-    """关闭并清理全局持久化会话（插件卸载时调用）。"""
+    """Close and clear the global persistent browser session."""
     global _persisted_session
     with _session_lock:
         if _persisted_session is not None:
@@ -160,7 +186,7 @@ def close_persisted_session() -> None:
             _persisted_session = None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 
 
 @dataclass(frozen=True)
@@ -207,11 +233,11 @@ def render_dice_gif(
     better_render_quality: bool = True,
     parallel_result: bool = False,
 ) -> dict[str, Any]:
-    """渲染骰子 GIF 并返回结果。
+    """Render a dice GIF and return the parsed roll result.
 
-    Args:
-        parallel_result: 为 True 时，帧捕获完成后立即在后台线程中读取骰子结果，
-                         与等待动画播完的 wait_for_timeout 并行执行，可节省约 0.5–1 秒。
+    Playwright sync pages are single-threaded. ``parallel_result`` keeps the
+    faster behavior by reading the result immediately after GIF capture, but it
+    does not access the reused page from a second thread.
     """
     site_dir = Path(site_dir or (PROJECT_DIR / "dice_roller_app")).resolve()
     output_dir = Path(output_dir or (RUNTIME_DIR / "outputs")).resolve()
@@ -230,7 +256,6 @@ def render_dice_gif(
     frame_delay = max(20, round(1000 / max(1, fps)))
     total_frames = max(1, -(-duration // frame_delay))
 
-    # ── 获取复用的浏览器会话（建议一）──────────────────────────────────
     session = get_persisted_session(
         browser_path=browser_path,
         site_dir=site_dir,
@@ -238,48 +263,33 @@ def render_dice_gif(
         height=height,
         timeout_ms=timeout_ms,
     )
-    page, clip = session.get_page_and_clip()
 
-    try:
-        configure_dice(page, dice_type=dice_type, dice_count=count)
-        if better_render_quality:
-            wait_for_stable_render(page, clip)
-        baseline_frame = capture_clip_png(page, clip)
-        trigger_roll(page)
-        if better_render_quality:
-            # 等待骰子离开初始位置（JS 侧骰子停止事件驱动，见下方说明）
-            wait_for_roll_start(page, clip, baseline_frame)
-        else:
-            wait_for_animation_start(page, clip, baseline_frame, 2000)
-        frames = capture_frames(page, clip, total_frames, frame_delay)
-        write_gif(frames, output_path, frame_delay)
+    with session.render_lock:
+        page, clip = session.get_page_and_clip()
 
-        # ── 建议五：并行读取结果 ──────────────────────────────────────
-        if parallel_result:
-            result_holder: dict[str, Any] = {}
-            result_exc_holder: list[Exception] = []
+        try:
+            configure_dice(page, dice_type=dice_type, dice_count=count)
+            if better_render_quality:
+                wait_for_stable_render(page, clip)
+            baseline_frame = capture_clip_png(page, clip)
+            trigger_roll(page)
+            if better_render_quality:
+                wait_for_roll_start(page, clip, baseline_frame)
+            else:
+                wait_for_animation_start(page, clip, baseline_frame, 2000)
+            frames = capture_frames(page, clip, total_frames, frame_delay)
+            write_gif(frames, output_path, frame_delay)
 
-            def _read_result() -> None:
-                try:
-                    result_holder["r"] = read_roll_results(page, count, dice_type)
-                except Exception as exc:
-                    result_exc_holder.append(exc)
+            if parallel_result:
+                result = read_roll_results(page, count, dice_type)
+            else:
+                page.wait_for_timeout(max(2500, duration))
+                result = read_roll_results(page, count, dice_type)
 
-            reader_thread = threading.Thread(target=_read_result, daemon=True)
-            reader_thread.start()
-            page.wait_for_timeout(max(2500, duration))
-            reader_thread.join(timeout=DEFAULT_RESULT_TIMEOUT_MS / 1000.0 + 5)
-            if result_exc_holder:
-                raise result_exc_holder[0]
-            result = result_holder.get("r") or make_fallback_roll_result(count, dice_type)
-        else:
-            page.wait_for_timeout(max(2500, duration))
-            result = read_roll_results(page, count, dice_type)
-
-    except Exception:
-        # 页面出错时销毁会话，下次请求重建
-        close_persisted_session()
-        raise
+        except Exception:
+            # Rebuild the persistent page on the next request after any page error.
+            close_persisted_session()
+            raise
 
     return {
         "gif_path": str(output_path),
@@ -380,13 +390,7 @@ def install_playwright_chromium() -> None:
 
 
 def wait_for_dice_app(page: Any) -> None:
-    """等待骰子应用就绪。
-
-    改进（建议三）：去掉原来无条件的 1000ms 固定等待，
-    改为检测 WebGL 上下文已创建 + canvas 首帧已绘制（非空白），
-    在快速机器上可节省约 0.5–1 秒。
-    """
-    # 1. 等待 Roll 按钮和 canvas 出现
+    """Wait until the dice app has mounted and WebGL is ready."""
     page.wait_for_function(
         """
         () => {
@@ -397,7 +401,6 @@ def wait_for_dice_app(page: Any) -> None:
         """
     )
     page.wait_for_selector("canvas")
-    # 2. 等待 canvas 尺寸合理
     page.wait_for_function(
         """
         () => {
@@ -408,27 +411,17 @@ def wait_for_dice_app(page: Any) -> None:
         }
         """
     )
-    # 3. 等待 WebGL 上下文就绪（替代固定 1 秒等待）
     page.wait_for_function(
         """
-        () => {
+        () => new Promise((resolve) => {
           const canvas = document.querySelector('canvas');
-          if (!canvas) return false;
+          if (!canvas) return resolve(false);
           const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-          if (!gl) return false;
-          // 确认 canvas 已有实际像素输出（非全透明空白帧）
-          try {
-            const pixel = new Uint8Array(4);
-            gl.readPixels(
-              Math.floor(canvas.width / 2), Math.floor(canvas.height / 2),
-              1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel
-            );
-            // alpha > 0 说明 Three.js 已经渲染出内容
-            return pixel[3] > 0;
-          } catch (e) {
-            return false;
+          if (!gl || gl.drawingBufferWidth <= 0 || gl.drawingBufferHeight <= 0) {
+            return resolve(false);
           }
-        }
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)));
+        })
         """,
         timeout=10000,
     )
@@ -441,11 +434,11 @@ def wait_for_roll_start(
     baseline_frame: Image.Image,
     max_wait_ms: int = 1500,
 ) -> None:
-    """等待骰子开始运动后再录制帧（建议四替代方案）。
+    """绛夊緟楠板瓙寮€濮嬭繍鍔ㄥ悗鍐嶅綍鍒跺抚锛堝缓璁洓鏇夸唬鏂规锛夈€?
 
-    原来 better_render_quality=True 时直接 wait_for_timeout(140)，
-    这里改为主动检测画面变化，骰子一动就立即开始录制，
-    既不会因固定延迟漏掉起始帧，也不会在慢速机器上过早截图。
+    鍘熸潵 better_render_quality=True 鏃剁洿鎺?wait_for_timeout(140)锛?
+    杩欓噷鏀逛负涓诲姩妫€娴嬬敾闈㈠彉鍖栵紝楠板瓙涓€鍔ㄥ氨绔嬪嵆寮€濮嬪綍鍒讹紝
+    鏃笉浼氬洜鍥哄畾寤惰繜婕忔帀璧峰甯э紝涔熶笉浼氬湪鎱㈤€熸満鍣ㄤ笂杩囨棭鎴浘銆?
     """
     deadline = time.time() + (max_wait_ms / 1000.0)
     while time.time() < deadline:
@@ -453,7 +446,7 @@ def wait_for_roll_start(
         if count_changed_pixels(baseline_frame, current_frame) > 10:
             return
         page.wait_for_timeout(30)
-    # 超时也继续，不抛异常（骰子可能已经在运动了）
+    # 瓒呮椂涔熺户缁紝涓嶆姏寮傚父锛堥瀛愬彲鑳藉凡缁忓湪杩愬姩浜嗭級
 
 
 def configure_dice(page: Any, dice_type: str, dice_count: int) -> None:

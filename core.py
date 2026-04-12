@@ -62,7 +62,9 @@ def parse_roll_request(
     dice_type = normalized_config["default_dice_type"]
     count = normalized_config["default_count"]
 
-    compact_match = re.search(r"\b([1-6])\s*d\s*(4|6|8|10|20)\b", cleaned, re.IGNORECASE)
+    compact_match = re.search(
+        r"\b([1-6])\s*d\s*(4|6|8|10|20)\b", cleaned, re.IGNORECASE
+    )
     if compact_match:
         count = normalize_dice_count(
             compact_match.group(1), normalized_config["max_count"]

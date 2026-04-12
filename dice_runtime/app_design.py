@@ -38,7 +38,15 @@ PHYSICS_DESIGN: dict[str, DicePhysicsDesign] = {
         "D8", "convex_polyhedron", "OctahedronGeometry", 45, 0.12, 0.5, 0.3, 0.1, 0.715
     ),
     "D10": DicePhysicsDesign(
-        "D10", "convex_polyhedron", "PentagonalTrapezohedron", 48, 0.12, 0.5, 0.3, 0.1, 0.55
+        "D10",
+        "convex_polyhedron",
+        "PentagonalTrapezohedron",
+        48,
+        0.12,
+        0.5,
+        0.3,
+        0.1,
+        0.55,
     ),
     "D20": DicePhysicsDesign(
         "D20", "convex_polyhedron", "IcosahedronGeometry", 52, 0.1, 0.5, 0.3, 0.1, 0.77
