@@ -5,7 +5,8 @@ from pathlib import Path
 import astrbot.api.message_components as Comp
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.star import Context, Star, StarTools, register
+from astrbot.api.star import Context, Star, register
+from astrbot.core.utils.astrbot_path import get_astrbot_temp_path
 
 from .src.render_dice import render_dice_gif
 
@@ -29,8 +30,7 @@ class DicePlugin(Star):
         super().__init__(context)
         self.config = config or {}
         self.plugin_dir = Path(__file__).resolve().parent
-        self.data_dir = StarTools.get_data_dir("astrbot_plugin_3D_dice")
-        self.output_dir = self.data_dir / "outputs"
+        self.output_dir = Path(get_astrbot_temp_path()) / "astrbot_plugin_3D_dice"
         self.site_dir = self._resolve_optional_path(self.config.get("site_dir")) or (
             self.plugin_dir / "rollmydice_app"
         )
