@@ -836,7 +836,7 @@ def read_roll_results(
 
 
 def get_dice_face_count(dice_type: str) -> int:
-    match = re.fullmatch(r"D(\\d+)", dice_type.strip().upper())
+    match = re.fullmatch(r"D(\d+)", dice_type.strip().upper())
     if not match:
         raise ValueError(f"Unsupported dice type: {dice_type}")
     return int(match.group(1))
