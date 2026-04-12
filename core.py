@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-SUPPORTED_DICE_TYPES = ("D4", "D6", "D8", "D20")
+SUPPORTED_DICE_TYPES = ("D4", "D6", "D8", "D10", "D20")
 COMMAND_NAMES = ("3d_dice", "3ddice", "dice3d", "roll3d", "投骰子", "骰子")
 MAX_APP_DICE_COUNT = 6
 DEFAULT_DICE_TYPE = "D6"
@@ -61,7 +61,7 @@ def parse_roll_request(
     dice_type = normalized_config["default_dice_type"]
     count = normalized_config["default_count"]
 
-    compact_match = re.search(r"\b([1-6])\s*d\s*(4|6|8|20)\b", cleaned, re.IGNORECASE)
+    compact_match = re.search(r"\b([1-6])\s*d\s*(4|6|8|10|20)\b", cleaned, re.IGNORECASE)
     if compact_match:
         count = normalize_dice_count(
             compact_match.group(1), normalized_config["max_count"]
@@ -69,7 +69,7 @@ def parse_roll_request(
         dice_type = normalize_dice_type(f"D{compact_match.group(2)}")
         return DiceRollRequest(dice_type=dice_type, count=count)
 
-    dice_match = re.search(r"\bd\s*(4|6|8|20)\b", cleaned, re.IGNORECASE)
+    dice_match = re.search(r"\bd\s*(4|6|8|10|20)\b", cleaned, re.IGNORECASE)
     if dice_match:
         dice_type = normalize_dice_type(f"D{dice_match.group(1)}")
 
