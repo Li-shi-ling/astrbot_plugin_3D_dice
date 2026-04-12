@@ -1,0 +1,46 @@
+{
+  "default_dice_type": {
+    "description": "Default dice type",
+    "type": "string",
+    "default": "D6",
+    "options": ["D4", "D6", "D8", "D20"]
+  },
+  "default_count": {
+    "description": "Default dice count",
+    "type": "int",
+    "default": 1,
+    "hint": "The bundled dice app supports 1 to 6 dice."
+  },
+  "max_count": {
+    "description": "Maximum dice count accepted by commands",
+    "type": "int",
+    "default": 6,
+    "hint": "Values above 6 are capped because the bundled UI only supports up to 6 dice."
+  },
+  "duration": {
+    "description": "GIF capture duration in milliseconds",
+    "type": "int",
+    "default": 2400
+  },
+  "fps": {
+    "description": "GIF capture frame rate",
+    "type": "int",
+    "default": 16
+  },
+  "browser": {
+    "description": "Optional Chromium, Chrome, or Edge executable path",
+    "type": "string",
+    "default": "",
+    "hint": "Leave empty to auto-detect from common paths and browser-related environment variables."
+  },
+  "width": {
+    "description": "Browser viewport width used for rendering",
+    "type": "int",
+    "default": 900
+  },
+  "height": {
+    "description": "Browser viewport height used for rendering",
+    "type": "int",
+    "default": 1400
+  }
+}

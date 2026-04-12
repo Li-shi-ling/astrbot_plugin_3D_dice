@@ -8,11 +8,10 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from PIL import Image
 from playwright.sync_api import sync_playwright
-
 
 RUNTIME_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = RUNTIME_DIR.parent
@@ -24,10 +23,10 @@ def render_dice_gif(
     count: int = 1,
     duration: int = 2400,
     fps: int = 16,
-    output_name: Optional[str] = None,
-    browser: Optional[str] = None,
-    output_dir: Optional[Path] = None,
-    site_dir: Optional[Path] = None,
+    output_name: str | None = None,
+    browser: str | None = None,
+    output_dir: Path | None = None,
+    site_dir: Path | None = None,
     width: int = 900,
     height: int = 1400,
 ) -> dict[str, Any]:
@@ -39,7 +38,7 @@ def render_dice_gif(
     timeout_ms = DEFAULT_TIMEOUT_MS
 
     if not site_dir.exists():
-        raise FileNotFoundError("Site directory not found: %s" % site_dir)
+        raise FileNotFoundError(f"Site directory not found: {site_dir}")
     if not browser_path:
         raise FileNotFoundError(
             "Could not find a local Chromium/Chrome/Edge executable. Pass browser=..."
@@ -49,7 +48,7 @@ def render_dice_gif(
     total_frames = max(1, -(-duration // frame_delay))
 
     with StaticServer(site_dir) as server:
-        base_url = "http://127.0.0.1:%s/index.html" % server.port
+        base_url = f"http://127.0.0.1:{server.port}/index.html"
         with sync_playwright() as playwright:
             browser_instance = playwright.chromium.launch(
                 executable_path=browser_path,
@@ -97,10 +96,10 @@ def render_dice_gif(
 
 
 def default_output_name(dice_type: str, count: int) -> str:
-    return "%s-%s-%s.gif" % (dice_type.lower(), count, int(time.time() * 1000))
+    return f"{dice_type.lower()}-{count}-{int(time.time() * 1000)}.gif"
 
 
-def detect_browser_path() -> Optional[str]:
+def detect_browser_path() -> str | None:
     program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
     program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
     local_app_data = os.environ.get("LOCALAPPDATA", "")
@@ -333,7 +332,9 @@ def capture_frames(
     return frames
 
 
-def write_gif(frames: list[Image.Image], output_path: Path, frame_delay_ms: int) -> None:
+def write_gif(
+    frames: list[Image.Image], output_path: Path, frame_delay_ms: int
+) -> None:
     if not frames:
         raise RuntimeError("No frames captured")
     first, rest = frames[0], frames[1:]
@@ -432,7 +433,7 @@ def read_roll_results(page: Any, dice_count: int, dice_type: str) -> dict[str, A
 def get_dice_face_count(dice_type: str) -> int:
     normalized = str(dice_type or "").strip().upper()
     if not normalized.startswith("D"):
-        raise ValueError("Unsupported dice type: %s" % dice_type)
+        raise ValueError(f"Unsupported dice type: {dice_type}")
     return int(normalized[1:])
 
 
@@ -458,7 +459,7 @@ class StaticServer:
         self.thread = None
         self.port = 0
 
-    def __enter__(self) -> "StaticServer":
+    def __enter__(self) -> StaticServer:
         import threading
 
         handler = partial(StaticFileHandler, directory=str(self.root_dir))

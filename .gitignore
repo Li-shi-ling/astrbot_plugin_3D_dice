@@ -209,3 +209,6 @@ __marimo__/
 outputs/
 node_modules/
 .idea/
+CONSTRAINTS.md
+TODO.md
+test/
