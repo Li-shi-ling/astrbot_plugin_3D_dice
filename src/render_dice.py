@@ -538,34 +538,41 @@ def get_capture_clip(page: Any) -> dict[str, int]:
     box = page.evaluate(
         """
         () => {
-          const canvases = [...document.querySelectorAll("canvas")]
-            .map((canvas, index) => {
-              const rect = canvas.getBoundingClientRect();
-              const style = getComputedStyle(canvas);
-              return {
-                index,
-                width: Math.round(rect.width),
-                height: Math.round(rect.height),
-                top: Math.round(rect.top),
-                left: Math.round(rect.left),
-                visible:
-                  style.display !== "none" &&
-                  style.visibility !== "hidden" &&
-                  Number(style.opacity || "1") > 0 &&
-                  rect.width > 0 &&
-                  rect.height > 0,
-              };
-            })
-            .filter((item) => item.visible)
-            .sort((a, b) => b.width * b.height - a.width * a.height);
+          const allCanvases = [...document.querySelectorAll("canvas")].map((canvas, index) => {
+            const rect = canvas.getBoundingClientRect();
+            const style = getComputedStyle(canvas);
+            return {
+              index,
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              top: Math.round(rect.top),
+              left: Math.round(rect.left),
+              display: style.display,
+              visibility: style.visibility,
+              opacity: Number(style.opacity || "1"),
+              area: Math.round(rect.width * rect.height),
+            };
+          });
 
-          const canvasInfo = canvases[0];
+          const visibleCanvases = allCanvases
+            .filter((item) => item.width > 0 && item.height > 0)
+            .sort((a, b) => b.area - a.area);
+
+          const canvasInfo = visibleCanvases[0] || allCanvases[0] || null;
           if (!canvasInfo) {
-            return { clip: null, canvases };
+            return { clip: null, canvases: allCanvases };
           }
 
           const canvas = document.querySelectorAll("canvas")[canvasInfo.index];
+          if (!canvas) {
+            return { clip: null, canvases: allCanvases };
+          }
+
           const rect = canvas.getBoundingClientRect();
+          if (!(rect.width > 0 && rect.height > 0)) {
+            return { clip: null, canvases: allCanvases };
+          }
+
           const top = Math.max(0, rect.top - 40);
           const left = Math.max(0, rect.left - 24);
           const right = Math.min(window.innerWidth, rect.right + 24);
@@ -578,13 +585,16 @@ def get_capture_clip(page: Any) -> dict[str, int]:
               width: right - left,
               height: bottom - top,
             },
-            canvases,
+            canvases: allCanvases,
           };
         }
         """
     )
     if not box or not box.get("clip"):
-        raise RuntimeError("Could not locate dice canvas clip region")
+        raise RuntimeError(
+            "Could not locate dice canvas clip region; "
+            f"canvases={json.dumps((box or {}).get('canvases', []), ensure_ascii=False)}"
+        )
     clip = {
         "x": round(box["clip"]["x"]),
         "y": round(box["clip"]["y"]),
