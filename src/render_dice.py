@@ -29,6 +29,13 @@ HEADLESS_GL_ERROR_PATTERNS = (
 )
 
 
+def append_debug(diagnostics: list[str], message: str) -> None:
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[3D_dice][render] {timestamp} {message}"
+    diagnostics.append(line)
+    print(line, file=sys.stderr, flush=True)
+
+
 def render_dice_gif(
     dice_type: str = "D6",
     count: int = 1,
@@ -40,8 +47,15 @@ def render_dice_gif(
     site_dir: Path | None = None,
     linux_render_mode: str | None = None,
 ) -> dict[str, Any]:
+    diagnostics: list[str] = []
     resolved_linux_render_mode = normalize_linux_render_mode(linux_render_mode)
     resolved_browser = browser or detect_browser_path()
+    append_debug(
+        diagnostics,
+        "build request "
+        f"dice_type={dice_type} count={count} duration={duration} fps={fps} "
+        f"browser={resolved_browser or '<auto-miss>'} linux_mode={resolved_linux_render_mode or '<none>'}",
+    )
     request = build_render_request(
         dice_type=dice_type,
         count=count,
@@ -55,20 +69,28 @@ def render_dice_gif(
     )
 
     try:
-        return render_dice_gif_once(request)
+        return render_dice_gif_once(request, diagnostics=diagnostics)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(
-            "Playwright renderer timed out while waiting for the browser process."
+            "Playwright renderer timed out while waiting for the browser process. "
+            f"diagnostics: {' | '.join(diagnostics[-20:])}"
         ) from exc
     except Exception as exc:
         if should_retry_with_xvfb(exc, resolved_linux_render_mode):
             fallback_request = dict(request)
             fallback_request["linux_render_mode"] = "xvfb"
+            append_debug(
+                diagnostics,
+                f"headless render failed, retrying with xvfb: {exc}",
+            )
             try:
-                return render_dice_gif_via_subprocess(fallback_request)
+                return render_dice_gif_via_subprocess(
+                    fallback_request, diagnostics=diagnostics
+                )
             except subprocess.TimeoutExpired as retry_exc:
                 raise RuntimeError(
-                    "Playwright renderer timed out in xvfb fallback mode."
+                    "Playwright renderer timed out in xvfb fallback mode. "
+                    f"diagnostics: {' | '.join(diagnostics[-20:])}"
                 ) from retry_exc
             except subprocess.CalledProcessError as retry_exc:
                 retry_details = (retry_exc.stderr or "").strip()
@@ -76,9 +98,11 @@ def render_dice_gif(
                     retry_details = (retry_exc.stdout or "").strip() or str(retry_exc)
                 raise RuntimeError(
                     "Playwright renderer failed in headless mode and xvfb fallback "
-                    f"also failed: {retry_details}"
+                    f"also failed: {retry_details} | diagnostics: {' | '.join(diagnostics[-20:])}"
                 ) from retry_exc
-        raise RuntimeError(f"Playwright renderer failed: {exc}") from exc
+        raise RuntimeError(
+            f"Playwright renderer failed: {exc} | diagnostics: {' | '.join(diagnostics[-20:])}"
+        ) from exc
 
 
 def build_render_request(
@@ -107,7 +131,9 @@ def build_render_request(
     }
 
 
-def render_dice_gif_once(request: dict[str, Any]) -> dict[str, Any]:
+def render_dice_gif_once(
+    request: dict[str, Any], diagnostics: list[str] | None = None
+) -> dict[str, Any]:
     site_dir = Path(request["site_dir"] or (PLUGIN_DIR / "rollmydice_app")).resolve()
     output_dir = Path(request["output_dir"] or (PLUGIN_DIR / "outputs")).resolve()
     output_name = request["output_name"] or default_output_name(request)
@@ -130,45 +156,75 @@ def render_dice_gif_once(request: dict[str, Any]) -> dict[str, Any]:
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    diagnostics: list[str] = []
+    diagnostics = diagnostics if diagnostics is not None else []
+    append_debug(
+        diagnostics,
+        f"render start site_dir={site_dir} output_path={output_path} timeout_ms={timeout_ms}",
+    )
 
     with StaticServer(site_dir) as server:
         base_url = f"http://127.0.0.1:{server.port}/index.html"
+        append_debug(diagnostics, f"static server listening at {base_url}")
         with sync_playwright() as playwright:
             browser = launch_browser(
                 playwright=playwright,
                 browser_path=browser_path,
                 timeout_ms=timeout_ms,
                 linux_render_mode=linux_render_mode,
+                diagnostics=diagnostics,
             )
             try:
                 context = browser.new_context(
                     viewport={"width": 900, "height": 1400},
                     device_scale_factor=1,
                 )
+                append_debug(diagnostics, "browser context created")
                 page = context.new_page()
                 attach_page_diagnostics(page, diagnostics)
+                append_debug(diagnostics, "new page created")
                 page.set_default_timeout(timeout_ms)
                 page.set_default_navigation_timeout(timeout_ms)
+                append_debug(diagnostics, f"navigating to {base_url}")
                 page.goto(base_url, wait_until="domcontentloaded", timeout=timeout_ms)
+                append_debug(diagnostics, f"navigation completed url={page.url}")
                 wait_for_dice_app(page, timeout_ms)
+                append_debug(diagnostics, "dice app ready")
                 configure_dice(
                     page,
                     dice_type=request["dice_type"],
                     dice_count=int(request["count"] or 1),
                 )
+                append_debug(
+                    diagnostics,
+                    f"dice configured type={request['dice_type']} count={int(request['count'] or 1)}",
+                )
                 clip = get_capture_clip(page)
+                append_debug(
+                    diagnostics, f"capture clip={json.dumps(clip, ensure_ascii=False)}"
+                )
                 baseline_frame = capture_clip_png(page, clip)
+                append_debug(diagnostics, "captured baseline frame")
                 trigger_roll(page)
+                append_debug(diagnostics, "roll triggered")
                 wait_for_animation_start(
                     page,
                     clip,
                     baseline_frame,
                     max_animation_wait_ms,
                 )
+                append_debug(diagnostics, "animation start detected")
                 frames = capture_frames(page, clip, total_frames, frame_delay)
+                append_debug(
+                    diagnostics,
+                    f"captured frames count={len(frames)} frame_delay_ms={frame_delay}",
+                )
                 write_gif(frames, output_path, frame_delay)
+                append_debug(diagnostics, f"gif written to {output_path}")
                 result = read_roll_results(page, int(request["count"] or 1))
+                append_debug(
+                    diagnostics,
+                    f"roll results parsed results={result['results']} total={result['total']}",
+                )
                 return {
                     "gif_path": str(output_path),
                     "results": result["results"],
@@ -177,11 +233,16 @@ def render_dice_gif_once(request: dict[str, Any]) -> dict[str, Any]:
                     "dice_count": int(request["count"] or 1),
                 }
             except Exception as exc:
+                append_debug(diagnostics, f"render failure: {exc}")
+                debug_paths = dump_failure_artifacts(page, output_dir, diagnostics)
                 details = "; ".join(diagnostics[-10:])
+                if debug_paths:
+                    details = f"{details}; artifacts: {json.dumps(debug_paths, ensure_ascii=False)}"
                 if details:
                     raise RuntimeError(f"{exc} | diagnostics: {details}") from exc
                 raise
             finally:
+                append_debug(diagnostics, "closing browser")
                 browser.close()
 
 
@@ -217,6 +278,7 @@ def launch_browser(
     browser_path: str,
     timeout_ms: int,
     linux_render_mode: str | None,
+    diagnostics: list[str] | None = None,
 ):
     has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
     headless = resolve_linux_headless_mode(linux_render_mode, has_display)
@@ -242,6 +304,13 @@ def launch_browser(
                 "--disable-gpu-sandbox",
             ]
         )
+    if diagnostics is not None:
+        append_debug(
+            diagnostics,
+            "launch browser "
+            f"executable={browser_path} headless={headless} has_display={has_display} "
+            f"args={json.dumps(args, ensure_ascii=False)}",
+        )
     return playwright.chromium.launch(
         executable_path=browser_path,
         headless=headless,
@@ -265,22 +334,36 @@ def resolve_linux_headless_mode(
 def attach_page_diagnostics(page: Any, diagnostics: list[str]) -> None:
     page.on(
         "console",
-        lambda message: diagnostics.append(
-            f"[page:{message.type.upper()}] {message.text}"
+        lambda message: append_debug(
+            diagnostics,
+            f"[page:{message.type.upper()}] {message.text}",
         ),
     )
     page.on(
         "pageerror",
-        lambda error: diagnostics.append(
-            f"[page:error] {getattr(error, 'message', str(error))}"
+        lambda error: append_debug(
+            diagnostics,
+            f"[page:error] {getattr(error, 'message', str(error))}",
         ),
     )
     page.on(
         "requestfailed",
-        lambda request: diagnostics.append(
+        lambda request: append_debug(
+            diagnostics,
             "[page:requestfailed] "
             f"{request.method} {request.url} "
-            f"{request.failure.error_text if request.failure else 'unknown'}"
+            f"{request.failure.error_text if request.failure else 'unknown'}",
+        ),
+    )
+    page.on(
+        "response",
+        lambda response: (
+            append_debug(
+                diagnostics,
+                f"[page:response] {response.status} {response.url}",
+            )
+            if response.status >= 400
+            else None
         ),
     )
 
@@ -642,7 +725,9 @@ def should_retry_with_xvfb(exc: Exception, linux_render_mode: str | None) -> boo
     return any(pattern in details for pattern in HEADLESS_GL_ERROR_PATTERNS)
 
 
-def render_dice_gif_via_subprocess(request: dict[str, Any]) -> dict[str, Any]:
+def render_dice_gif_via_subprocess(
+    request: dict[str, Any], diagnostics: list[str] | None = None
+) -> dict[str, Any]:
     payload = json.dumps(request, ensure_ascii=False)
     command = [
         shutil.which("xvfb-run") or "xvfb-run",
@@ -654,6 +739,11 @@ def render_dice_gif_via_subprocess(request: dict[str, Any]) -> dict[str, Any]:
         "--payload",
         payload,
     ]
+    if diagnostics is not None:
+        append_debug(
+            diagnostics,
+            f"launch xvfb fallback command={json.dumps(command, ensure_ascii=False)}",
+        )
     completed = subprocess.run(
         command,
         cwd=PLUGIN_DIR,
@@ -664,10 +754,52 @@ def render_dice_gif_via_subprocess(request: dict[str, Any]) -> dict[str, Any]:
         env=build_render_env(),
         timeout=(int(request.get("timeout") or DEFAULT_TIMEOUT_MS) / 1000) + 15,
     )
+    if diagnostics is not None and completed.stderr:
+        for line in completed.stderr.strip().splitlines()[-20:]:
+            append_debug(diagnostics, f"[xvfb:stderr] {line}")
     stdout = completed.stdout.strip().splitlines()
     if not stdout:
         raise RuntimeError("Renderer subprocess returned no output")
     return json.loads(stdout[-1])
+
+
+def dump_failure_artifacts(
+    page: Any, output_dir: Path, diagnostics: list[str]
+) -> dict[str, str]:
+    debug_dir = output_dir / "debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    stamp = str(int(time.time() * 1000))
+    artifacts: dict[str, str] = {}
+    try:
+        screenshot_path = debug_dir / f"failure-{stamp}.png"
+        page.screenshot(path=str(screenshot_path), full_page=True)
+        artifacts["screenshot"] = str(screenshot_path)
+        append_debug(diagnostics, f"saved failure screenshot to {screenshot_path}")
+    except Exception as exc:
+        append_debug(diagnostics, f"failed to save failure screenshot: {exc}")
+    try:
+        html_path = debug_dir / f"failure-{stamp}.html"
+        html_path.write_text(page.content(), encoding="utf-8")
+        artifacts["html"] = str(html_path)
+        append_debug(diagnostics, f"saved failure html to {html_path}")
+    except Exception as exc:
+        append_debug(diagnostics, f"failed to save failure html: {exc}")
+    try:
+        state_path = debug_dir / f"failure-{stamp}.json"
+        state = {
+            "url": page.url,
+            "title": page.title(),
+            "state": collect_page_state(page),
+            "diagnostics_tail": diagnostics[-50:],
+        }
+        state_path.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        artifacts["state"] = str(state_path)
+        append_debug(diagnostics, f"saved failure state to {state_path}")
+    except Exception as exc:
+        append_debug(diagnostics, f"failed to save failure state: {exc}")
+    return artifacts
 
 
 def build_render_env() -> dict[str, str]:
