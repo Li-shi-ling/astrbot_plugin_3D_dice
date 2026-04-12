@@ -108,6 +108,7 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         ),
         "fps": _int_in_range(config.get("fps", DEFAULT_FPS), 4, 30),
         "browser": _optional_path_string(config.get("browser")),
+        "auto_install_chromium": _bool_value(config.get("auto_install_chromium", True)),
         "width": _int_in_range(config.get("width", DEFAULT_WIDTH), 320, 1920),
         "height": _int_in_range(config.get("height", DEFAULT_HEIGHT), 320, 2400),
     }
@@ -171,3 +172,11 @@ def _optional_path_string(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _bool_value(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in {"", "0", "false", "no", "off"}
+    return bool(value)

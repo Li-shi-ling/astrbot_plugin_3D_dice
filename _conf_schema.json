@@ -33,6 +33,12 @@
     "default": "",
     "hint": "Leave empty to auto-detect from common paths and browser-related environment variables."
   },
+  "auto_install_chromium": {
+    "description": "Auto-install Playwright Chromium when no browser is found",
+    "type": "bool",
+    "default": true,
+    "hint": "AstrBot installs Python packages from requirements.txt. This option also runs python -m playwright install chromium when the browser binary is missing."
+  },
   "width": {
     "description": "Browser viewport width used for rendering",
     "type": "int",

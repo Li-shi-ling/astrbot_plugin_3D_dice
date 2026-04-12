@@ -4,7 +4,10 @@ import json
 import os
 import secrets
 import socketserver
+import subprocess
+import sys
 import time
+from dataclasses import dataclass
 from functools import partial
 from http.server import SimpleHTTPRequestHandler
 from io import BytesIO
@@ -12,12 +15,42 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image
-from playwright.sync_api import sync_playwright
 
 RUNTIME_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = RUNTIME_DIR.parent
 DEFAULT_TIMEOUT_MS = 60000
 DEFAULT_RESULT_TIMEOUT_MS = 45000
+PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
+
+
+@dataclass(frozen=True)
+class BrowserSetupResult:
+    browser_path: str
+    installed: bool
+
+
+def playwright_install_reminder() -> str:
+    return (
+        "3D dice requires Playwright. Install it in the AstrBot Python environment, "
+        "then install Chromium: python -m pip install playwright && "
+        "python -m playwright install chromium"
+    )
+
+
+def is_playwright_available() -> bool:
+    try:
+        get_sync_playwright()
+    except ModuleNotFoundError:
+        return False
+    return True
+
+
+def get_sync_playwright() -> Any:
+    try:
+        from playwright.sync_api import sync_playwright
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(playwright_install_reminder()) from exc
+    return sync_playwright
 
 
 def render_dice_gif(
@@ -51,7 +84,7 @@ def render_dice_gif(
 
     with StaticServer(site_dir) as server:
         base_url = f"http://127.0.0.1:{server.port}/index.html"
-        with sync_playwright() as playwright:
+        with get_sync_playwright()() as playwright:
             browser_instance = playwright.chromium.launch(
                 executable_path=browser_path,
                 headless=True,
@@ -129,7 +162,61 @@ def detect_browser_path() -> str | None:
     for candidate in candidates:
         if candidate and Path(candidate).exists():
             return candidate
+    return detect_playwright_chromium_path()
+
+
+def detect_playwright_chromium_path() -> str | None:
+    try:
+        with get_sync_playwright()() as playwright:
+            candidate = playwright.chromium.executable_path
+    except Exception:
+        return None
+    if candidate and Path(candidate).exists():
+        return str(candidate)
     return None
+
+
+def ensure_chromium_browser(auto_install: bool = True) -> BrowserSetupResult:
+    browser_path = detect_browser_path()
+    if browser_path:
+        return BrowserSetupResult(browser_path=browser_path, installed=False)
+
+    if not auto_install:
+        raise FileNotFoundError(
+            "Could not find a local Chromium/Chrome/Edge executable. "
+            "Install Chromium with: python -m playwright install chromium"
+        )
+
+    install_playwright_chromium()
+    browser_path = detect_browser_path()
+    if browser_path:
+        return BrowserSetupResult(browser_path=browser_path, installed=True)
+
+    raise FileNotFoundError(
+        "Playwright Chromium installation finished, but no browser executable was found."
+    )
+
+
+def install_playwright_chromium() -> None:
+    completed = subprocess.run(
+        [sys.executable, "-m", "playwright", "install", "chromium"],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS,
+    )
+    if completed.returncode == 0:
+        return
+
+    output = "\n".join(
+        part.strip()
+        for part in (completed.stdout, completed.stderr)
+        if part and part.strip()
+    )
+    raise RuntimeError(
+        "Failed to install Playwright Chromium "
+        f"(exit code {completed.returncode}). {output}"
+    )
 
 
 def wait_for_dice_app(page: Any) -> None:
