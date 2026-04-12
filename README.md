@@ -45,6 +45,7 @@ The renderer supports Linux servers without a desktop environment.
 - Recommended: keep `linux_render_mode` set to `auto`; the renderer will try true headless first and fall back to `xvfb` on Linux when WebGL initialization fails
 - If your server is known to require a virtual display, install `xvfb` and set `linux_render_mode` to `xvfb`
 - The renderer enables software WebGL automatically on Linux (`llvmpipe` + SwiftShader/EGL)
+- On low-power devices, set `render_preset` to `fast`
 
 ## Optional config
 
@@ -52,8 +53,20 @@ The renderer supports Linux servers without a desktop environment.
 {
   "browser_path": "",
   "site_dir": "",
+  "render_preset": "standard",
   "default_duration_ms": 2400,
   "default_fps": 16,
+  "render_width": 900,
+  "render_height": 1400,
+  "linux_render_mode": "auto"
+}
+```
+
+Recommended for ARM/Linux boards:
+
+```json
+{
+  "render_preset": "fast",
   "linux_render_mode": "auto"
 }
 ```

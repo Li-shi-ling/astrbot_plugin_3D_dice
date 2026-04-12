@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import re
 from pathlib import Path
@@ -14,9 +16,28 @@ DEFAULT_DICE_TYPE = "D6"
 DEFAULT_DICE_COUNT = 1
 DEFAULT_DURATION_MS = 2400
 DEFAULT_FPS = 16
+DEFAULT_RENDER_WIDTH = 900
+DEFAULT_RENDER_HEIGHT = 1400
 MAX_DICE_COUNT = 10
 MAX_DURATION_MS = 10000
 MAX_FPS = 30
+MAX_RENDER_WIDTH = 1600
+MAX_RENDER_HEIGHT = 2000
+
+RENDER_PRESETS = {
+    "standard": {
+        "duration_ms": DEFAULT_DURATION_MS,
+        "fps": DEFAULT_FPS,
+        "width": DEFAULT_RENDER_WIDTH,
+        "height": DEFAULT_RENDER_HEIGHT,
+    },
+    "fast": {
+        "duration_ms": 1200,
+        "fps": 6,
+        "width": 640,
+        "height": 960,
+    },
+}
 
 
 @register(
@@ -31,21 +52,37 @@ class DicePlugin(Star):
         self.config = config or {}
         self.plugin_dir = Path(__file__).resolve().parent
         self.output_dir = Path(get_astrbot_temp_path()) / "astrbot_plugin_3D_dice"
+        self.render_preset = self._normalize_render_preset(
+            self.config.get("render_preset", "standard")
+        )
+        preset = RENDER_PRESETS[self.render_preset]
         self.site_dir = self._resolve_optional_path(self.config.get("site_dir")) or (
             self.plugin_dir / "rollmydice_app"
         )
         self.browser_path = self._resolve_optional_path(self.config.get("browser_path"))
         self.default_duration = self._clamp_int(
-            self.config.get("default_duration_ms", DEFAULT_DURATION_MS),
+            self.config.get("default_duration_ms", preset["duration_ms"]),
             minimum=500,
             maximum=MAX_DURATION_MS,
-            fallback=DEFAULT_DURATION_MS,
+            fallback=preset["duration_ms"],
         )
         self.default_fps = self._clamp_int(
-            self.config.get("default_fps", DEFAULT_FPS),
+            self.config.get("default_fps", preset["fps"]),
             minimum=1,
             maximum=MAX_FPS,
-            fallback=DEFAULT_FPS,
+            fallback=preset["fps"],
+        )
+        self.render_width = self._clamp_int(
+            self.config.get("render_width", preset["width"]),
+            minimum=240,
+            maximum=MAX_RENDER_WIDTH,
+            fallback=preset["width"],
+        )
+        self.render_height = self._clamp_int(
+            self.config.get("render_height", preset["height"]),
+            minimum=240,
+            maximum=MAX_RENDER_HEIGHT,
+            fallback=preset["height"],
         )
         self.linux_render_mode = self._normalize_linux_render_mode(
             self.config.get("linux_render_mode", "auto")
@@ -85,6 +122,8 @@ class DicePlugin(Star):
                 count=dice_count,
                 duration=self.default_duration,
                 fps=self.default_fps,
+                width=self.render_width,
+                height=self.render_height,
                 browser=str(self.browser_path) if self.browser_path else None,
                 output_dir=self.output_dir,
                 site_dir=self.site_dir,
@@ -154,4 +193,11 @@ class DicePlugin(Star):
         normalized = str(value or "auto").strip().lower()
         if normalized not in {"auto", "headless", "xvfb"}:
             return "auto"
+        return normalized
+
+    @staticmethod
+    def _normalize_render_preset(value: object) -> str:
+        normalized = str(value or "standard").strip().lower()
+        if normalized not in RENDER_PRESETS:
+            return "standard"
         return normalized

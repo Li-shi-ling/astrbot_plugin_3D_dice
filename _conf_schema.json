@@ -11,17 +11,35 @@
     "default": "",
     "hint": "Leave empty to use the plugin's rollmydice_app directory."
   },
+  "render_preset": {
+    "description": "Rendering preset: `standard` or `fast`.",
+    "type": "string",
+    "default": "standard",
+    "hint": "Use `fast` on low-power Linux/ARM devices to reduce render time."
+  },
   "default_duration_ms": {
     "description": "Default animation duration in milliseconds.",
     "type": "int",
     "default": 2400,
-    "hint": "The value is clamped to a safe range in plugin code."
+    "hint": "The value is clamped in plugin code. Leave it unset to use the selected preset."
   },
   "default_fps": {
     "description": "Default GIF frame rate.",
     "type": "int",
     "default": 16,
-    "hint": "The value is clamped to a safe range in plugin code."
+    "hint": "The value is clamped in plugin code. Leave it unset to use the selected preset."
+  },
+  "render_width": {
+    "description": "Browser viewport width used for rendering.",
+    "type": "int",
+    "default": 900,
+    "hint": "The value is clamped in plugin code. Leave it unset to use the selected preset."
+  },
+  "render_height": {
+    "description": "Browser viewport height used for rendering.",
+    "type": "int",
+    "default": 1400,
+    "hint": "The value is clamped in plugin code. Leave it unset to use the selected preset."
   },
   "linux_render_mode": {
     "description": "Linux rendering mode: `headless`, `auto`, or `xvfb`.",

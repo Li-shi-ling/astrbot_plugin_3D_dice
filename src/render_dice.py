@@ -1,9 +1,4 @@
-"""Playwright-based dice renderer used by the AstrBot plugin runtime.
-
-This module is the only supported rendering path. The old Node/Puppeteer
-prototype files may still exist in the repository as leftovers, but the plugin
-does not invoke them anymore.
-"""
+from __future__ import annotations
 
 import argparse
 import base64
@@ -52,6 +47,8 @@ def render_dice_gif(
     count: int = 1,
     duration: int = 2400,
     fps: int = 16,
+    width: int = 900,
+    height: int = 1400,
     output_name: str | None = None,
     browser: str | None = None,
     output_dir: Path | None = None,
@@ -65,6 +62,7 @@ def render_dice_gif(
         diagnostics,
         "build request "
         f"dice_type={dice_type} count={count} duration={duration} fps={fps} "
+        f"width={width} height={height} "
         f"browser={resolved_browser or '<auto-miss>'} linux_mode={resolved_linux_render_mode or '<none>'}",
     )
     request = build_render_request(
@@ -72,6 +70,8 @@ def render_dice_gif(
         count=count,
         duration=duration,
         fps=fps,
+        width=width,
+        height=height,
         output_name=output_name,
         browser=resolved_browser,
         output_dir=output_dir,
@@ -122,6 +122,8 @@ def build_render_request(
     count: int,
     duration: int,
     fps: int,
+    width: int,
+    height: int,
     output_name: str | None,
     browser: str | None,
     output_dir: Path | None,
@@ -133,6 +135,8 @@ def build_render_request(
         "count": count,
         "duration": duration,
         "fps": fps,
+        "width": width,
+        "height": height,
         "output_name": output_name,
         "browser": browser,
         "output_dir": str(Path(output_dir).resolve()) if output_dir else None,
@@ -186,7 +190,10 @@ def render_dice_gif_once(
             )
             try:
                 context = browser.new_context(
-                    viewport={"width": 900, "height": 1400},
+                    viewport={
+                        "width": int(request.get("width") or 900),
+                        "height": int(request.get("height") or 1400),
+                    },
                     device_scale_factor=1,
                 )
                 append_debug(diagnostics, "browser context created")
@@ -265,12 +272,25 @@ def render_dice_gif_once(
 
 
 def detect_browser_path() -> str | None:
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
     candidates = [
         os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"),
         os.environ.get("PUPPETEER_EXECUTABLE_PATH"),
         os.environ.get("BROWSER"),
         os.environ.get("CHROME_BIN"),
         os.environ.get("CHROMIUM_PATH"),
+        str(Path(program_files) / "Google/Chrome/Application/chrome.exe"),
+        str(Path(program_files_x86) / "Google/Chrome/Application/chrome.exe"),
+        str(Path(program_files) / "Microsoft/Edge/Application/msedge.exe"),
+        str(Path(program_files_x86) / "Microsoft/Edge/Application/msedge.exe"),
+        str(Path(local_app_data) / "Google/Chrome/Application/chrome.exe")
+        if local_app_data
+        else None,
+        str(Path(local_app_data) / "Microsoft/Edge/Application/msedge.exe")
+        if local_app_data
+        else None,
         "/usr/bin/chromium-browser",
         "/usr/bin/chromium",
         "/usr/bin/chrome",
@@ -1008,7 +1028,7 @@ class StaticServer:
         self.thread: threading.Thread | None = None
         self.port = 0
 
-    def __enter__(self) -> "StaticServer":
+    def __enter__(self) -> StaticServer:
         handler = partial(StaticFileHandler, directory=str(self.root_dir))
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.port = int(self.httpd.server_address[1])
