@@ -1,4 +1,5 @@
 import argparse
+import base64
 import json
 import os
 import re
@@ -580,6 +581,7 @@ def get_capture_clip(page: Any) -> dict[str, int]:
 
           return {
             clip: {
+              canvasIndex: canvasInfo.index,
               x: left,
               y: top,
               width: right - left,
@@ -596,6 +598,7 @@ def get_capture_clip(page: Any) -> dict[str, int]:
             f"canvases={json.dumps((box or {}).get('canvases', []), ensure_ascii=False)}"
         )
     clip = {
+        "canvasIndex": int(box["clip"]["canvasIndex"]),
         "x": round(box["clip"]["x"]),
         "y": round(box["clip"]["y"]),
         "width": round(box["clip"]["width"]),
@@ -648,7 +651,37 @@ def capture_frames(
 
 
 def capture_clip_png(page: Any, clip: dict[str, int]) -> Image.Image:
-    png_buffer = page.screenshot(clip=clip, type="png", timeout=15000)
+    canvas_index = clip.get("canvasIndex")
+    if isinstance(canvas_index, int):
+        canvas_png_base64 = page.evaluate(
+            """
+            (canvasIndex) => {
+              const canvas = document.querySelectorAll("canvas")[canvasIndex];
+              if (!canvas) {
+                return null;
+              }
+              const dataUrl = canvas.toDataURL("image/png");
+              const marker = "base64,";
+              const markerIndex = dataUrl.indexOf(marker);
+              if (markerIndex === -1) {
+                return null;
+              }
+              return dataUrl.slice(markerIndex + marker.length);
+            }
+            """,
+            canvas_index,
+        )
+        if canvas_png_base64:
+            png_buffer = base64.b64decode(canvas_png_base64)
+            return Image.open(BytesIO(png_buffer)).convert("RGBA")
+
+    screenshot_clip = {
+        "x": clip["x"],
+        "y": clip["y"],
+        "width": clip["width"],
+        "height": clip["height"],
+    }
+    png_buffer = page.screenshot(clip=screenshot_clip, type="png", timeout=15000)
     return Image.open(BytesIO(png_buffer)).convert("RGBA")
 
 
