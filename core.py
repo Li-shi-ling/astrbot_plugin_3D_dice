@@ -128,6 +128,9 @@ def format_success_text(result: dict[str, Any]) -> str:
     dice_type = str(result["dice_type"]).upper()
     results = [int(value) for value in result["results"]]
     total = int(result["total"])
+    dice_count = int(result.get("dice_count") or len(results) or 1)
+    if not results:
+        return f"3D dice result: {dice_type} x {dice_count}; total {total}"
     detail = " + ".join(str(value) for value in results)
     return f"3D dice result: {dice_type} x {len(results)} = {detail}; total {total}"
 

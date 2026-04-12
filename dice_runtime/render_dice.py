@@ -16,6 +16,7 @@ from playwright.sync_api import sync_playwright
 RUNTIME_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = RUNTIME_DIR.parent
 DEFAULT_TIMEOUT_MS = 60000
+DEFAULT_RESULT_TIMEOUT_MS = 15000
 
 
 def render_dice_gif(
@@ -349,85 +350,121 @@ def write_gif(
     )
 
 
-def read_roll_results(page: Any, dice_count: int, dice_type: str) -> dict[str, Any]:
+def read_roll_results(
+    page: Any,
+    dice_count: int,
+    dice_type: str,
+    timeout_ms: int = DEFAULT_RESULT_TIMEOUT_MS,
+) -> dict[str, Any]:
+    deadline = time.time() + (max(1000, timeout_ms) / 1000.0)
+    best_total_result: dict[str, Any] | None = None
+
+    while time.time() < deadline:
+        time.sleep(0.25)
+        result = parse_roll_result_snapshot(
+            read_roll_result_snapshot(page), dice_count, dice_type
+        )
+        if result and result.get("results"):
+            return result
+        if result:
+            best_total_result = result
+
+    if best_total_result:
+        return best_total_result
+
+    raise RuntimeError("Could not parse dice results from page")
+
+
+def read_roll_result_snapshot(page: Any) -> dict[str, Any]:
+    return page.evaluate(
+        """
+        () => {
+          const nodes = [...document.querySelectorAll('div, span, p, h1, h2')];
+          const visible = nodes
+            .map((node) => {
+              const text = (node.textContent || '').trim();
+              const style = getComputedStyle(node);
+              const rect = node.getBoundingClientRect();
+              return {
+                text,
+                display: style.display,
+                visibility: style.visibility,
+                opacity: Number(style.opacity || '1'),
+                fontSize: Number.parseFloat(style.fontSize || '0'),
+                fontWeight: Number.parseInt(style.fontWeight || '400', 10) || 400,
+                top: Math.round(rect.top),
+                left: Math.round(rect.left),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+              };
+            })
+            .filter((item) =>
+              item.text &&
+              item.display !== 'none' &&
+              item.visibility !== 'hidden' &&
+              item.opacity > 0 &&
+              item.width > 0 &&
+              item.height > 0
+            );
+
+          const numericCandidates = visible
+            .filter((item) => /^\\d+$/.test(item.text))
+            .sort((a, b) => b.fontSize - a.fontSize || a.top - b.top)
+            .map((item) => ({
+              ...item,
+              value: Number(item.text),
+            }));
+
+          const breakdownCandidates = visible
+            .filter((item) => /^\\d+(?:\\s*\\+\\s*\\d+)+$/.test(item.text))
+            .sort((a, b) => b.fontSize - a.fontSize || a.top - b.top)
+            .map((item) => ({
+              ...item,
+              parts: item.text
+                .split('+')
+                .map((part) => Number(part.trim()))
+                .filter((value) => Number.isFinite(value)),
+            }));
+
+          return { numericCandidates, breakdownCandidates };
+        }
+        """
+    )
+
+
+def parse_roll_result_snapshot(
+    data: dict[str, Any], dice_count: int, dice_type: str
+) -> dict[str, Any] | None:
     max_face = get_dice_face_count(dice_type)
     min_total = dice_count
     max_total = dice_count * max_face
 
-    for _ in range(20):
-        time.sleep(0.25)
-        data = page.evaluate(
-            """
-            () => {
-              const nodes = [...document.querySelectorAll('div, span, p, h1, h2')];
-              const visible = nodes
-                .map((node) => {
-                  const text = (node.textContent || '').trim();
-                  const style = getComputedStyle(node);
-                  const rect = node.getBoundingClientRect();
-                  return {
-                    text,
-                    display: style.display,
-                    visibility: style.visibility,
-                    opacity: Number(style.opacity || '1'),
-                    fontSize: Number.parseFloat(style.fontSize || '0'),
-                    fontWeight: Number.parseInt(style.fontWeight || '400', 10) || 400,
-                    top: Math.round(rect.top),
-                    left: Math.round(rect.left),
-                    width: Math.round(rect.width),
-                    height: Math.round(rect.height),
-                  };
-                })
-                .filter((item) =>
-                  item.text &&
-                  item.display !== 'none' &&
-                  item.visibility !== 'hidden' &&
-                  item.opacity > 0 &&
-                  item.width > 0 &&
-                  item.height > 0
-                );
+    for candidate in data.get("breakdownCandidates", []):
+        parts = candidate.get("parts", [])
+        if len(parts) != dice_count:
+            continue
+        if not all(1 <= int(value) <= max_face for value in parts):
+            continue
+        total = sum(int(value) for value in parts)
+        if min_total <= total <= max_total:
+            return {"results": [int(value) for value in parts], "total": total}
 
-              const numericCandidates = visible
-                .filter((item) => /^\\d+$/.test(item.text))
-                .sort((a, b) => b.fontSize - a.fontSize || a.top - b.top)
-                .map((item) => ({
-                  ...item,
-                  value: Number(item.text),
-                }));
+    for candidate in data.get("numericCandidates", []):
+        value = candidate.get("value")
+        if (
+            isinstance(value, int)
+            and min_total <= value <= max_total
+            and is_likely_total_candidate(candidate)
+        ):
+            if dice_count == 1:
+                return {"results": [value], "total": value}
+            return {"results": [], "total": value, "partial": True}
 
-              const breakdownCandidates = visible
-                .filter((item) => /^\\d+(?:\\s*\\+\\s*\\d+)+$/.test(item.text))
-                .sort((a, b) => b.fontSize - a.fontSize || a.top - b.top)
-                .map((item) => ({
-                  ...item,
-                  parts: item.text
-                    .split('+')
-                    .map((part) => Number(part.trim()))
-                    .filter((value) => Number.isFinite(value)),
-                }));
+    return None
 
-              return { numericCandidates, breakdownCandidates };
-            }
-            """
-        )
 
-        for candidate in data.get("breakdownCandidates", []):
-            parts = candidate.get("parts", [])
-            if len(parts) != dice_count:
-                continue
-            if not all(1 <= int(value) <= max_face for value in parts):
-                continue
-            total = sum(int(value) for value in parts)
-            if min_total <= total <= max_total:
-                return {"results": [int(value) for value in parts], "total": total}
-
-        if dice_count == 1:
-            for candidate in data.get("numericCandidates", []):
-                value = candidate.get("value")
-                if isinstance(value, int) and min_total <= value <= max_total:
-                    return {"results": [value], "total": value}
-
-    raise RuntimeError("Could not parse dice results from page")
+def is_likely_total_candidate(candidate: dict[str, Any]) -> bool:
+    return float(candidate.get("fontSize") or 0) >= 40
 
 
 def get_dice_face_count(dice_type: str) -> int:
