@@ -8,6 +8,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
 from http.server import SimpleHTTPRequestHandler
@@ -26,6 +27,11 @@ PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
 # A single persistent browser/page is reused between render requests.
 _session_lock = threading.Lock()
 _persisted_session: PersistedBrowserSession | None = None
+_render_executor = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="astrbot-3d-dice-render",
+)
+_render_thread_id: int | None = None
 
 
 class PersistedBrowserSession:
@@ -177,8 +183,7 @@ def get_persisted_session(
         return _persisted_session
 
 
-def close_persisted_session() -> None:
-    """Close and clear the global persistent browser session."""
+def _close_persisted_session_impl() -> None:
     global _persisted_session
     with _session_lock:
         if _persisted_session is not None:
@@ -186,7 +191,9 @@ def close_persisted_session() -> None:
             _persisted_session = None
 
 
-# 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+def close_persisted_session() -> None:
+    """Close and clear the global persistent browser session."""
+    _run_in_render_thread(_close_persisted_session_impl)
 
 
 @dataclass(frozen=True)
@@ -219,7 +226,54 @@ def get_sync_playwright() -> Any:
     return sync_playwright
 
 
+def _run_in_render_thread(function: Any, *args: Any, **kwargs: Any) -> Any:
+    global _render_thread_id
+    if threading.get_ident() == _render_thread_id:
+        return function(*args, **kwargs)
+    future = _render_executor.submit(_render_thread_entry, function, args, kwargs)
+    return future.result()
+
+
+def _render_thread_entry(
+    function: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> Any:
+    global _render_thread_id
+    _render_thread_id = threading.get_ident()
+    return function(*args, **kwargs)
+
+
 def render_dice_gif(
+    dice_type: str = "D6",
+    count: int = 1,
+    duration: int = 2400,
+    fps: int = 16,
+    output_name: str | None = None,
+    browser: str | None = None,
+    output_dir: Path | None = None,
+    site_dir: Path | None = None,
+    width: int = 900,
+    height: int = 1400,
+    better_render_quality: bool = True,
+    parallel_result: bool = False,
+) -> dict[str, Any]:
+    return _run_in_render_thread(
+        _render_dice_gif_impl,
+        dice_type=dice_type,
+        count=count,
+        duration=duration,
+        fps=fps,
+        output_name=output_name,
+        browser=browser,
+        output_dir=output_dir,
+        site_dir=site_dir,
+        width=width,
+        height=height,
+        better_render_quality=better_render_quality,
+        parallel_result=parallel_result,
+    )
+
+
+def _render_dice_gif_impl(
     dice_type: str = "D6",
     count: int = 1,
     duration: int = 2400,
@@ -288,7 +342,7 @@ def render_dice_gif(
 
         except Exception:
             # Rebuild the persistent page on the next request after any page error.
-            close_persisted_session()
+            _close_persisted_session_impl()
             raise
 
     return {
@@ -436,11 +490,11 @@ def wait_for_roll_start(
     baseline_frame: Image.Image,
     max_wait_ms: int = 1500,
 ) -> None:
-    """绛夊緟楠板瓙寮€濮嬭繍鍔ㄥ悗鍐嶅綍鍒跺抚锛堝缓璁洓鏇夸唬鏂规锛夈€?
+    """缁涘绶熸鏉跨摍瀵偓婵绻嶉崝銊ユ倵閸愬秴缍嶉崚璺烘姎閿涘牆缂撶拋顔兼磽閺囧じ鍞弬瑙勵攳閿涘鈧?
 
-    鍘熸潵 better_render_quality=True 鏃剁洿鎺?wait_for_timeout(140)锛?
-    杩欓噷鏀逛负涓诲姩妫€娴嬬敾闈㈠彉鍖栵紝楠板瓙涓€鍔ㄥ氨绔嬪嵆寮€濮嬪綍鍒讹紝
-    鏃笉浼氬洜鍥哄畾寤惰繜婕忔帀璧峰甯э紝涔熶笉浼氬湪鎱㈤€熸満鍣ㄤ笂杩囨棭鎴浘銆?
+    閸樼喐娼?better_render_quality=True 閺冨墎娲块幒?wait_for_timeout(140)閿?
+    鏉╂瑩鍣烽弨閫涜礋娑撹濮╁Λ鈧ù瀣暰闂堛垹褰夐崠鏍电礉妤犳澘鐡欐稉鈧崝銊ユ皑缁斿宓嗗鈧慨瀣秿閸掕绱?
+    閺冾澀绗夋导姘礈閸ュ搫鐣惧鎯扮箿濠曞繑甯€鐠у嘲顫愮敮褝绱濇稊鐔剁瑝娴兼艾婀幈銏も偓鐔告簚閸ｃ劋绗傛潻鍥ㄦ－閹搭亜娴橀妴?
     """
     deadline = time.time() + (max_wait_ms / 1000.0)
     while time.time() < deadline:
@@ -448,7 +502,7 @@ def wait_for_roll_start(
         if count_changed_pixels(baseline_frame, current_frame) > 10:
             return
         page.wait_for_timeout(30)
-    # 瓒呮椂涔熺户缁紝涓嶆姏寮傚父锛堥瀛愬彲鑳藉凡缁忓湪杩愬姩浜嗭級
+    # 鐡掑懏妞傛稊鐔烘埛缂侇叏绱濇稉宥嗗瀵倸鐖堕敍鍫ヮ€忕€涙劕褰查懗钘夊嚒缂佸繐婀潻鎰З娴滃棴绱?
 
 
 def configure_dice(page: Any, dice_type: str, dice_count: int) -> None:
