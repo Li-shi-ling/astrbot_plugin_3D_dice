@@ -48,7 +48,7 @@ class DicePlugin(Star):
             fallback=DEFAULT_FPS,
         )
         self.linux_render_mode = self._normalize_linux_render_mode(
-            self.config.get("linux_render_mode", "headless")
+            self.config.get("linux_render_mode", "auto")
         )
 
     async def initialize(self):
@@ -151,7 +151,7 @@ class DicePlugin(Star):
 
     @staticmethod
     def _normalize_linux_render_mode(value: object) -> str:
-        normalized = str(value or "headless").strip().lower()
+        normalized = str(value or "auto").strip().lower()
         if normalized not in {"auto", "headless", "xvfb"}:
-            return "headless"
+            return "auto"
         return normalized

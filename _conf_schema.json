@@ -1,9 +1,9 @@
 {
   "browser_path": {
-    "description": "Absolute path to a local Edge or Chrome executable.",
+    "description": "Absolute path to a local Chromium or Chrome executable.",
     "type": "string",
     "default": "",
-    "hint": "Leave empty to use the default browser lookup in the renderer."
+    "hint": "Leave empty to use the default browser lookup in the Playwright renderer."
   },
   "site_dir": {
     "description": "Absolute path to the dice web app directory.",
@@ -26,7 +26,7 @@
   "linux_render_mode": {
     "description": "Linux rendering mode: `headless`, `auto`, or `xvfb`.",
     "type": "string",
-    "default": "headless",
-    "hint": "Use `headless` for server environments without a desktop. Use `xvfb` only when headless WebGL is unavailable."
+    "default": "auto",
+    "hint": "Use `auto` to try headless first and fall back to xvfb on Linux. Use `xvfb` when your Chromium build cannot initialize WebGL in true headless mode."
   }
 }
