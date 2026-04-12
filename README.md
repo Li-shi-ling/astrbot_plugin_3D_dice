@@ -89,7 +89,10 @@ AGPL-3.0
 ## 开发者
 
 - 作者：Lishining
-- 仓库：https://github.com/Li-shi-ling/astrbot_plugin_3D_dice
 - QQ群: 1083090761
+
+## 致谢
+
+感谢[rollmydices](https://www.rollmydice.app/)的3d代码支持
 
 [![Moe Counter](https://count.getloli.com/get/@li-shi-ling?theme=minecraft)](https://github.com/Li-shi-ling/astrbot_plugin_mrfzccl)

@@ -18,6 +18,7 @@ from .core import (
     usage_text,
 )
 from .dice_runtime.render_dice import (
+    close_persisted_session,
     ensure_chromium_browser,
     is_playwright_available,
     playwright_install_reminder,
@@ -65,6 +66,10 @@ class ThreeDDicePlugin(Star):
         if setup_result.installed:
             logger.info("3D dice installed Playwright Chromium automatically.")
 
+    async def destroy(self) -> None:
+        """插件卸载时关闭持久化浏览器会话。"""
+        await asyncio.to_thread(close_persisted_session)
+
     @filter.command("3d_dice", alias={"3ddice", "dice3d", "roll3d", "投骰子", "骰子"})
     async def roll_dice(self, event: AstrMessageEvent):
         """Roll 3D dice and return an animated GIF."""
@@ -97,6 +102,7 @@ class ThreeDDicePlugin(Star):
                 width=options.width,
                 height=options.height,
                 better_render_quality=options.better_render_quality,
+                parallel_result=options.parallel_result,
             )
         except Exception as exc:
             logger.exception("3D dice render failed")

@@ -30,6 +30,7 @@ class DiceRenderOptions:
     better_render_quality: bool
     width: int
     height: int
+    parallel_result: bool
 
 
 def normalize_dice_type(value: Any) -> str:
@@ -113,6 +114,7 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         "better_render_quality": _bool_value(config.get("better_render_quality", True)),
         "width": _int_in_range(config.get("width", DEFAULT_WIDTH), 320, 1920),
         "height": _int_in_range(config.get("height", DEFAULT_HEIGHT), 320, 2400),
+        "parallel_result": _bool_value(config.get("parallel_result", False)),
     }
 
 
@@ -125,6 +127,7 @@ def build_render_options(config: dict[str, Any] | None = None) -> DiceRenderOpti
         better_render_quality=normalized["better_render_quality"],
         width=normalized["width"],
         height=normalized["height"],
+        parallel_result=normalized["parallel_result"],
     )
 
 

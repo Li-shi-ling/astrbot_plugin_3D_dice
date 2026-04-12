@@ -3,7 +3,7 @@
     "description": "默认骰子类型",
     "type": "string",
     "default": "D6",
-    "options": ["D4", "D6", "D8", "D20"]
+    "options": ["D4", "D6", "D8", "D10", "D20"]
   },
   "default_count": {
     "description": "默认骰子数量",
@@ -40,19 +40,27 @@
     "hint": "AstrBot 会根据 requirements.txt 安装 Python 包；开启后，如果缺少浏览器二进制，还会自动执行 python -m playwright install chromium。"
   },
   "better_render_quality": {
-    "description": "等待 3D 场景完整渲染后再录制 GIF",
+    "description": "等待骰子开始运动后再录制 GIF",
     "type": "bool",
     "default": true,
-    "hint": "开启后会先等待原页面完整绘制，并从稳定场景开始录制，画面质量更好。"
+    "hint": "开启后会先等待 3D 场景稳定，Roll 后检测到骰子真正运动才开始录制，避免录到空白起始帧。关闭可略微加快响应速度。"
   },
   "width": {
-    "description": "渲染用浏览器视口宽度",
+    "description": "渲染用浏览器视口宽度（像素）",
     "type": "int",
-    "default": 900
+    "default": 900,
+    "hint": "降低此值（如 600）可减少渲染负担，加快截图速度，但画面会更窄。"
   },
   "height": {
-    "description": "渲染用浏览器视口高度",
+    "description": "渲染用浏览器视口高度（像素）",
     "type": "int",
-    "default": 1400
+    "default": 1400,
+    "hint": "降低此值（如 800）可减少渲染负担，加快截图速度。骰子 canvas 会自动裁剪，实际 GIF 尺寸不受影响。"
+  },
+  "parallel_result": {
+    "description": "并行读取骰子结果（加速模式）",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后，帧捕获完成后立即在后台线程中读取骰子结果，与等待动画播完的过程并行执行，可节省约 0.5–1 秒。如遇结果读取不稳定可关闭。"
   }
 }
