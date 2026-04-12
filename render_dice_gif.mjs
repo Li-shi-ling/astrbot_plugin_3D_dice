@@ -24,6 +24,7 @@ const durationMs = Number(args.duration ?? 2400);
 const fps = Number(args.fps ?? 16);
 const maxAnimationWaitMs = Number(args.maxAnimationWait ?? 2000);
 const timeoutMs = Number(args.timeout ?? 60000);
+const linuxMode = normalizeLinuxMode(args.linuxMode);
 const frameDelay = Math.max(20, Math.round(1000 / fps));
 const totalFrames = Math.max(1, Math.ceil(durationMs / frameDelay));
 const browserPath = resolveBrowserPath(args.browser);
@@ -107,13 +108,17 @@ function resolveBrowserPath(explicitPath) {
   const candidates = [
     explicitPath,
     process.env.PUPPETEER_EXECUTABLE_PATH,
+    process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
     process.env.BROWSER,
+    process.env.CHROME_BIN,
+    process.env.CHROMIUM_PATH,
     "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
     "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
     "/usr/bin/chromium-browser",
     "/usr/bin/chromium",
+    "/usr/bin/chrome",
     "/usr/bin/google-chrome",
     "/usr/bin/google-chrome-stable",
     "/snap/bin/chromium",
@@ -141,7 +146,7 @@ function createLaunchOptions({
   const hasDisplay = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
 
   if (platform === "linux") {
-    headless = hasDisplay ? false : true;
+    headless = resolveLinuxHeadlessMode(linuxMode, hasDisplay);
     args.push(
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -152,7 +157,7 @@ function createLaunchOptions({
       "--use-gl=egl",
       "--disable-gpu-sandbox",
     );
-    if (!hasDisplay) {
+    if (headless) {
       args.push("--headless=chrome");
     }
   }
@@ -169,6 +174,24 @@ function createLaunchOptions({
     },
     args,
   };
+}
+
+function normalizeLinuxMode(value) {
+  const normalized = String(value ?? "headless").trim().toLowerCase();
+  if (["auto", "headless", "xvfb"].includes(normalized)) {
+    return normalized;
+  }
+  return "headless";
+}
+
+function resolveLinuxHeadlessMode(linuxMode, hasDisplay) {
+  if (linuxMode === "headless") {
+    return true;
+  }
+  if (linuxMode === "xvfb") {
+    return false;
+  }
+  return !hasDisplay;
 }
 
 function createStaticServer(rootDir) {

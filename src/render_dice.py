@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 PLUGIN_DIR = Path(__file__).resolve().parent.parent
 NODE_SCRIPT = PLUGIN_DIR / "render_dice_gif.mjs"
@@ -16,16 +16,17 @@ def render_dice_gif(
     count: int = 1,
     duration: int = 2400,
     fps: int = 16,
-    output_name: Optional[str] = None,
-    browser: Optional[str] = None,
-    output_dir: Optional[Path] = None,
-    site_dir: Optional[Path] = None,
-) -> Dict[str, Any]:
+    output_name: str | None = None,
+    browser: str | None = None,
+    output_dir: Path | None = None,
+    site_dir: Path | None = None,
+    linux_render_mode: str | None = None,
+) -> dict[str, Any]:
     if not NODE_SCRIPT.exists():
         raise FileNotFoundError(f"Node script not found: {NODE_SCRIPT}")
 
     cmd = [
-        *build_node_prefix(),
+        *build_node_prefix(linux_render_mode),
         "node",
         str(NODE_SCRIPT),
         f"--diceType={dice_type}",
@@ -43,6 +44,9 @@ def render_dice_gif(
         cmd.append(f"--outputDir={Path(output_dir).resolve()}")
     if site_dir:
         cmd.append(f"--siteDir={Path(site_dir).resolve()}")
+    resolved_linux_render_mode = normalize_linux_render_mode(linux_render_mode)
+    if resolved_linux_render_mode:
+        cmd.append(f"--linuxMode={resolved_linux_render_mode}")
     cmd.append(f"--timeout={DEFAULT_TIMEOUT_MS}")
 
     try:
@@ -68,14 +72,19 @@ def render_dice_gif(
     return json.loads(stdout[-1])
 
 
-def detect_browser_path() -> Optional[str]:
+def detect_browser_path() -> str | None:
     candidates = [
         os.environ.get("PUPPETEER_EXECUTABLE_PATH"),
+        os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"),
         os.environ.get("BROWSER"),
+        os.environ.get("CHROME_BIN"),
+        os.environ.get("CHROMIUM_PATH"),
         "/usr/bin/chromium-browser",
         "/usr/bin/chromium",
+        "/usr/bin/chrome",
         "/usr/bin/google-chrome",
         "/usr/bin/google-chrome-stable",
+        "/snap/bin/chromium",
     ]
     for candidate in candidates:
         if not candidate:
@@ -85,8 +94,12 @@ def detect_browser_path() -> Optional[str]:
     return None
 
 
-def build_node_prefix() -> list[str]:
+def build_node_prefix(linux_render_mode: str | None = None) -> list[str]:
     if not sys.platform.startswith("linux"):
+        return []
+
+    mode = normalize_linux_render_mode(linux_render_mode) or "headless"
+    if mode != "xvfb":
         return []
 
     if os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
@@ -94,7 +107,9 @@ def build_node_prefix() -> list[str]:
 
     xvfb_run = shutil.which("xvfb-run")
     if not xvfb_run:
-        return []
+        raise FileNotFoundError(
+            "xvfb-run is required when linux_render_mode is set to 'xvfb'."
+        )
 
     return [xvfb_run, "-a", "-s", "-screen 0 1280x1600x24"]
 
@@ -104,7 +119,20 @@ def build_render_env() -> dict[str, str]:
     if sys.platform.startswith("linux"):
         env.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
         env.setdefault("MESA_LOADER_DRIVER_OVERRIDE", "llvmpipe")
+        env.setdefault("EGL_PLATFORM", "surfaceless")
     return env
+
+
+def normalize_linux_render_mode(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    normalized = str(value).strip().lower()
+    if not normalized:
+        return None
+    if normalized not in {"auto", "headless", "xvfb"}:
+        raise ValueError("linux_render_mode must be one of: auto, headless, xvfb.")
+    return normalized
 
 
 if __name__ == "__main__":

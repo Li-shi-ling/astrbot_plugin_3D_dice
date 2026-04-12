@@ -22,5 +22,11 @@
     "type": "int",
     "default": 16,
     "hint": "The value is clamped to a safe range in plugin code."
+  },
+  "linux_render_mode": {
+    "description": "Linux rendering mode: `headless`, `auto`, or `xvfb`.",
+    "type": "string",
+    "default": "headless",
+    "hint": "Use `headless` for server environments without a desktop. Use `xvfb` only when headless WebGL is unavailable."
   }
 }

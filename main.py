@@ -47,6 +47,9 @@ class DicePlugin(Star):
             maximum=MAX_FPS,
             fallback=DEFAULT_FPS,
         )
+        self.linux_render_mode = self._normalize_linux_render_mode(
+            self.config.get("linux_render_mode", "headless")
+        )
 
     async def initialize(self):
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -85,6 +88,7 @@ class DicePlugin(Star):
                 browser=str(self.browser_path) if self.browser_path else None,
                 output_dir=self.output_dir,
                 site_dir=self.site_dir,
+                linux_render_mode=self.linux_render_mode,
             )
         except FileNotFoundError as exc:
             yield event.plain_result(f"Runtime dependency missing: {exc}")
@@ -118,9 +122,7 @@ class DicePlugin(Star):
 
         match = re.fullmatch(r"(?:(\d+)\s*)?D(\d+)", cleaned)
         if not match:
-            raise ValueError(
-                "Usage: /dice [d4|d6|d8|d20|NdX], for example /dice 3d6"
-            )
+            raise ValueError("Usage: /dice [d4|d6|d8|d20|NdX], for example /dice 3d6")
 
         count = int(match.group(1) or DEFAULT_DICE_COUNT)
         dice_faces = int(match.group(2))
@@ -146,3 +148,10 @@ class DicePlugin(Star):
         except (TypeError, ValueError):
             return fallback
         return max(minimum, min(maximum, parsed))
+
+    @staticmethod
+    def _normalize_linux_render_mode(value: object) -> str:
+        normalized = str(value or "headless").strip().lower()
+        if normalized not in {"auto", "headless", "xvfb"}:
+            return "headless"
+        return normalized
