@@ -273,6 +273,8 @@ class RenderWorkerProcess:
             self.start()
             try:
                 return self._send_render_request(kwargs)
+            except RenderWorkerRequestError:
+                raise
             except Exception:
                 self.close()
                 raise
@@ -331,13 +333,19 @@ class RenderWorkerProcess:
             return response["result"]
         error = str(response.get("error") or "3D dice render worker failed")
         details = str(response.get("traceback") or "").strip()
-        raise RuntimeError(f"{error}\n{details}".strip())
+        raise RenderWorkerRequestError(f"{error}\n{details}".strip())
+
+
+class RenderWorkerRequestError(RuntimeError):
+    """Render failed inside a healthy worker process."""
 
 
 def _render_dice_gif_worker(**kwargs: Any) -> dict[str, Any]:
     worker = get_render_worker()
     try:
         return worker.render(**kwargs)
+    except RenderWorkerRequestError:
+        raise
     except Exception:
         # Retry once with a fresh worker in case the persistent subprocess died.
         close_render_worker()
