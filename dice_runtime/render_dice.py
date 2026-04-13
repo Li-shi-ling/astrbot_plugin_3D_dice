@@ -27,6 +27,9 @@ DEFAULT_TIMEOUT_MS = 60000
 DEFAULT_RESULT_TIMEOUT_MS = 8000
 CONFIGURE_TIMEOUT_MS = 5000
 PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
+DEFAULT_CAPTURE_MAX_SIDE = 720
+XVFB_ENV = "ASTRBOT_3D_DICE_USE_XVFB"
+XVFB_ACTIVE_ENV = "ASTRBOT_3D_DICE_XVFB"
 
 # A single persistent browser/page is reused between render requests.
 _session_lock = threading.Lock()
@@ -70,7 +73,7 @@ class PersistedBrowserSession:
 
         self._browser = self._playwright_ctx.chromium.launch(
             executable_path=self.browser_path,
-            headless=True,
+            headless=not bool(os.environ.get("DISPLAY")),
             timeout=self.timeout_ms,
             args=[
                 "--allow-file-access-from-files",
@@ -328,11 +331,13 @@ class RenderWorkerProcess:
         if self.process is not None and self.process.poll() is None:
             return
         self.close()
+        command, env = build_render_worker_command()
         self.process = subprocess.Popen(
-            [sys.executable, str(Path(__file__).resolve()), "--worker-json"],
+            command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
+            env=env,
             text=True,
             bufsize=1,
         )
@@ -370,13 +375,8 @@ class RenderWorkerProcess:
         }
         self.process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
         self.process.stdin.flush()
-        line = self.process.stdout.readline()
-        if not line:
-            raise RuntimeError(
-                "3D dice render worker stopped before returning a result"
-            )
 
-        response = json.loads(line)
+        response = read_worker_json_response(self.process.stdout)
         if response.get("ok"):
             return response["result"]
         error = str(response.get("error") or "3D dice render worker failed")
@@ -386,6 +386,45 @@ class RenderWorkerProcess:
 
 class RenderWorkerRequestError(RuntimeError):
     """Render failed inside a healthy worker process."""
+
+
+def build_render_worker_command() -> tuple[list[str], dict[str, str]]:
+    command = [sys.executable, str(Path(__file__).resolve()), "--worker-json"]
+    env = os.environ.copy()
+    xvfb_mode = env.get(XVFB_ENV, "auto").strip().lower()
+
+    if xvfb_mode in {"0", "false", "no", "off", "never"}:
+        return command, env
+    if env.get(XVFB_ACTIVE_ENV) or not is_xvfb_supported_platform():
+        return command, env
+    if env.get("DISPLAY") and xvfb_mode != "true":
+        return command, env
+
+    xvfb_run = shutil.which("xvfb-run")
+    if not xvfb_run:
+        if xvfb_mode == "true":
+            raise FileNotFoundError("xvfb-run was requested but was not found in PATH")
+        return command, env
+
+    env[XVFB_ACTIVE_ENV] = "1"
+    return [xvfb_run, "-a", *command], env
+
+
+def is_xvfb_supported_platform() -> bool:
+    return os.name != "nt" and sys.platform != "darwin"
+
+
+def read_worker_json_response(stdout: Any) -> dict[str, Any]:
+    while True:
+        line = stdout.readline()
+        if not line:
+            raise RuntimeError(
+                "3D dice render worker stopped before returning a result"
+            )
+        try:
+            return json.loads(line)
+        except json.JSONDecodeError:
+            continue
 
 
 def _render_dice_gif_worker(**kwargs: Any) -> dict[str, Any]:
@@ -616,14 +655,49 @@ def default_output_name(dice_type: str, count: int) -> str:
 
 
 def detect_browser_path() -> str | None:
-    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
-    program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
-    local_app_data = os.environ.get("LOCALAPPDATA", "")
-    candidates = [
+    env_candidates = [
         os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"),
         os.environ.get("PUPPETEER_EXECUTABLE_PATH"),
         os.environ.get("BROWSER"),
         os.environ.get("CHROME_BIN"),
+    ]
+    for candidate in env_candidates:
+        if is_usable_browser_candidate(candidate):
+            return candidate
+
+    playwright_browser = detect_playwright_chromium_path()
+    if is_usable_browser_candidate(playwright_browser):
+        return playwright_browser
+
+    for candidate in system_browser_candidates():
+        if is_usable_browser_candidate(candidate):
+            return candidate
+    return None
+
+
+def is_usable_browser_candidate(candidate: str | None) -> bool:
+    if not candidate:
+        return False
+    path = Path(candidate)
+    return path.exists() and not is_browser_wrapper(candidate)
+
+
+def is_browser_wrapper(candidate: str | None) -> bool:
+    if not candidate:
+        return False
+    path = Path(candidate)
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return False
+    return path.name in {"chromium", "chromium-browser"} and resolved.name == "snap"
+
+
+def system_browser_candidates() -> list[str]:
+    program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    return [
         str(Path(program_files) / "Google/Chrome/Application/chrome.exe"),
         str(Path(program_files_x86) / "Google/Chrome/Application/chrome.exe"),
         str(Path(program_files) / "Microsoft/Edge/Application/msedge.exe"),
@@ -640,10 +714,6 @@ def detect_browser_path() -> str | None:
         "/usr/bin/google-chrome-stable",
         "/snap/bin/chromium",
     ]
-    for candidate in candidates:
-        if candidate and Path(candidate).exists():
-            return candidate
-    return detect_playwright_chromium_path()
 
 
 def detect_playwright_chromium_path() -> str | None:
@@ -761,56 +831,62 @@ def wait_for_roll_start(
 
 
 def configure_dice(page: Any, dice_type: str, dice_count: int) -> None:
-    page.evaluate(
+    current_dice_type = page.evaluate(
         """
-        (label) => {
-          const buttons = [...document.querySelectorAll('button')];
-          const dieButton = buttons.find((button) => /^D\\d+$/i.test((button.textContent || '').trim()));
-          const directTarget = buttons.find((button) => (button.textContent || '').trim() === label);
-          if (directTarget) {
-            directTarget.click();
-            return;
-          }
-          if (dieButton) {
-            dieButton.click();
-          }
+        () => {
+          const button = [...document.querySelectorAll('button')].find(
+            (candidate) => /^D\\d+$/i.test((candidate.textContent || '').trim())
+          );
+          return (button?.textContent || '').trim();
         }
-        """,
-        dice_type,
-    )
-    page.wait_for_function(
         """
-        (label) => {
-          const buttons = [...document.querySelectorAll('button')];
-          return buttons.some((button) => (button.textContent || '').trim() === label);
-        }
-        """,
-        arg=dice_type,
-        timeout=CONFIGURE_TIMEOUT_MS,
     )
-    page.evaluate(
-        """
-        (label) => {
-          const buttons = [...document.querySelectorAll('button')];
-          const target = buttons.find((button) => (button.textContent || '').trim() === label);
-          if (target) {
-            target.click();
-          }
-        }
-        """,
-        dice_type,
-    )
-    page.wait_for_function(
-        """
-        (label) => {
-          const buttons = [...document.querySelectorAll('button')];
-          const dieButton = buttons.find((button) => /^D\\d+$/i.test((button.textContent || '').trim()));
-          return (dieButton?.textContent || '').trim() === label;
-        }
-        """,
-        arg=dice_type,
-        timeout=CONFIGURE_TIMEOUT_MS,
-    )
+
+    if current_dice_type != dice_type:
+        page.evaluate(
+            """
+            () => {
+              const buttons = [...document.querySelectorAll('button')];
+              const dieButton = buttons.find((button) => /^D\\d+$/i.test((button.textContent || '').trim()));
+              if (dieButton) {
+                dieButton.click();
+              }
+            }
+            """
+        )
+        page.wait_for_function(
+            """
+            (label) => {
+              const buttons = [...document.querySelectorAll('button')];
+              return buttons.some((button) => (button.textContent || '').trim() === label);
+            }
+            """,
+            arg=dice_type,
+            timeout=CONFIGURE_TIMEOUT_MS,
+        )
+        page.evaluate(
+            """
+            (label) => {
+              const buttons = [...document.querySelectorAll('button')];
+              const target = buttons.find((button) => (button.textContent || '').trim() === label);
+              if (target) {
+                target.click();
+              }
+            }
+            """,
+            dice_type,
+        )
+        page.wait_for_function(
+            """
+            (label) => {
+              const buttons = [...document.querySelectorAll('button')];
+              const dieButton = buttons.find((button) => /^D\\d+$/i.test((button.textContent || '').trim()));
+              return (dieButton?.textContent || '').trim() === label;
+            }
+            """,
+            arg=dice_type,
+            timeout=CONFIGURE_TIMEOUT_MS,
+        )
 
     if dice_count < 1:
         return
@@ -864,22 +940,43 @@ def configure_dice(page: Any, dice_type: str, dice_count: int) -> None:
 def get_capture_clip(page: Any) -> dict[str, int]:
     clip = page.evaluate(
         """
-        () => {
+        (captureMaxSide) => {
           const canvases = [...document.querySelectorAll('canvas')];
-          const target = canvases.find((canvas) => {
-            const rect = canvas.getBoundingClientRect();
-            return rect.width > 200 && rect.height > 200;
+          const canvas = canvases.find((candidate) => {
+            const rect = candidate.getBoundingClientRect();
+            return rect.width > 200 && rect.height > 100;
           }) || canvases[0];
-          if (!target) return null;
-          const rect = target.getBoundingClientRect();
+          if (!canvas) return null;
+
+          const rect = canvas.getBoundingClientRect();
+          const buttons = [...document.querySelectorAll('button')];
+          const rollButton = buttons.find((button) => /roll/i.test(button.textContent || ''));
+          const rollTop = rollButton ? rollButton.getBoundingClientRect().top : window.innerHeight;
+          const topControlBottom = buttons
+            .filter((button) => !/roll/i.test(button.textContent || ''))
+            .reduce((bottom, button) => Math.max(bottom, button.getBoundingClientRect().bottom), 0);
+
+          const maxSide = Math.max(1, Math.min(window.innerWidth, window.innerHeight, captureMaxSide));
+          const desiredSide = Math.max(rect.width, rect.height, 560);
+          const side = Math.floor(Math.min(maxSide, desiredSide));
+          const centeredY = rect.top + (rect.height / 2) - (side / 2);
+          const minY = Math.max(0, Math.floor(topControlBottom + 8));
+          const maxY = Math.max(0, Math.floor(rollTop - side - 8));
+          const y = maxY >= minY
+            ? Math.min(Math.max(centeredY, minY), maxY)
+            : Math.max(0, Math.min(centeredY, window.innerHeight - side));
+          const centeredX = rect.left + (rect.width / 2) - (side / 2);
+          const x = Math.max(0, Math.min(centeredX, window.innerWidth - side));
+
           return {
-            x: Math.max(0, Math.floor(rect.left - 24)),
-            y: Math.max(0, Math.floor(rect.top - 40)),
-            width: Math.min(window.innerWidth, Math.ceil(rect.width + 48)),
-            height: Math.min(window.innerHeight, Math.ceil(rect.height + 80)),
+            x: Math.floor(x),
+            y: Math.floor(y),
+            width: side,
+            height: side,
           };
         }
-        """
+        """,
+        DEFAULT_CAPTURE_MAX_SIDE,
     )
     if not clip:
         raise RuntimeError("Could not locate dice canvas")
