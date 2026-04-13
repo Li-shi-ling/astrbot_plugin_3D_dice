@@ -88,6 +88,7 @@ class PersistedBrowserSession:
         self._page: Any = None
         self._server: StaticServer | None = None
         self._clip: dict[str, int] | None = None
+        self._browser_events: list[dict[str, str]] = []
         self._ready = False
         self.render_lock = threading.Lock()
 
@@ -108,14 +109,16 @@ class PersistedBrowserSession:
                 "--disable-background-timer-throttling",
                 "--disable-dev-shm-usage",
                 "--disable-renderer-backgrounding",
+                "--enable-unsafe-swiftshader",
                 "--mute-audio",
+                "--no-sandbox",
             ],
         )
         self._context = self._browser.new_context(
             viewport={"width": self.width, "height": self.height},
             device_scale_factor=1,
         )
-        self._page = self._context.new_page()
+        self._page = self._new_page()
         self._page.set_default_timeout(self.timeout_ms)
         self._page.set_default_navigation_timeout(self.timeout_ms)
         self._page.goto(
@@ -151,7 +154,7 @@ class PersistedBrowserSession:
             except Exception:
                 pass
         base_url = f"http://127.0.0.1:{self._server.port}/index.html"
-        self._page = self._context.new_page()
+        self._page = self._new_page()
         self._page.set_default_timeout(self.timeout_ms)
         self._page.set_default_navigation_timeout(self.timeout_ms)
         self._page.goto(
@@ -161,6 +164,13 @@ class PersistedBrowserSession:
         self._clip = get_capture_clip(self._page)
         self._ready = True
         return self._page, self._clip
+
+    def _new_page(self) -> Any:
+        if self._context is None:
+            raise RuntimeError("Persisted browser context is not available")
+        page = self._context.new_page()
+        attach_browser_diagnostics(page, self._browser_events)
+        return page
 
     def matches(
         self,
@@ -181,6 +191,11 @@ class PersistedBrowserSession:
 
     def get_page_and_clip(self) -> tuple[Any, dict[str, int]]:
         return self._page, self._clip  # type: ignore[return-value]
+
+    def read_ui_snapshot(self) -> dict[str, Any]:
+        if self._page is None:
+            return {"error": "Persisted browser page is not available"}
+        return read_dice_ui_snapshot(self._page, self._browser_events)
 
     def close(self) -> None:
         self._ready = False
@@ -568,17 +583,17 @@ def _render_dice_gif_impl(
             try:
                 configure_dice(page, dice_type=dice_type, dice_count=count)
             except Exception as first_exc:
-                before_reload = read_dice_ui_snapshot(page)
+                before_reload = session.read_ui_snapshot()
                 try:
                     page, clip = session.reload_page()
                     configure_dice(page, dice_type=dice_type, dice_count=count)
                 except Exception as reload_exc:
-                    before_reset = read_dice_ui_snapshot(page)
+                    before_reset = session.read_ui_snapshot()
                     try:
                         page, clip = session.reset_page()
                         configure_dice(page, dice_type=dice_type, dice_count=count)
                     except Exception as reset_exc:
-                        after_reset = read_dice_ui_snapshot(page)
+                        after_reset = session.read_ui_snapshot()
                         raise RuntimeError(
                             "Could not configure dice UI after reload and page reset. "
                             f"first_error={first_exc}; reload_error={reload_exc}; "
@@ -778,10 +793,49 @@ def install_playwright_chromium() -> None:
     )
 
 
-def read_dice_ui_snapshot(page: Any) -> dict[str, Any]:
+def attach_browser_diagnostics(
+    page: Any, events: list[dict[str, str]], limit: int = 80
+) -> None:
+    def append_event(event: dict[str, str]) -> None:
+        events.append(event)
+        del events[:-limit]
+
+    def on_console(message: Any) -> None:
+        try:
+            text = message.text
+        except Exception:
+            text = str(message)
+        try:
+            message_type = message.type
+        except Exception:
+            message_type = "console"
+        try:
+            location = message.location
+        except Exception:
+            location = {}
+        append_event(
+            {
+                "type": f"console:{message_type}",
+                "text": str(text),
+                "url": str(location.get("url") or ""),
+                "line": str(location.get("lineNumber") or ""),
+                "column": str(location.get("columnNumber") or ""),
+            }
+        )
+
+    def on_page_error(error: Any) -> None:
+        append_event({"type": "pageerror", "text": str(error)})
+
+    page.on("console", on_console)
+    page.on("pageerror", on_page_error)
+
+
+def read_dice_ui_snapshot(
+    page: Any, browser_events: list[dict[str, str]] | None = None
+) -> dict[str, Any]:
     """Return a compact browser-side snapshot for readiness diagnostics."""
     try:
-        return page.evaluate(
+        snapshot = page.evaluate(
             """
             () => {
               const clean = (value) => (value || '').replace(/\\s+/g, ' ').trim();
@@ -824,8 +878,10 @@ def read_dice_ui_snapshot(page: Any) -> dict[str, Any]:
             }
             """
         )
+        snapshot["browserEvents"] = list(browser_events or [])[-20:]
+        return snapshot
     except Exception as exc:
-        return {"error": str(exc)}
+        return {"error": str(exc), "browserEvents": list(browser_events or [])[-20:]}
 
 
 def format_dice_ui_snapshot(snapshot: dict[str, Any]) -> str:
