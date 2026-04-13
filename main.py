@@ -25,6 +25,7 @@ from .dice_runtime.render_dice import (
     ensure_chromium_browser,
     is_playwright_available,
     playwright_install_reminder,
+    prewarm_render_worker,
     render_dice_gif,
 )
 
@@ -54,20 +55,34 @@ class ThreeDDicePlugin(Star):
             logger.warning(playwright_install_reminder())
             return
 
-        if not self.auto_install_chromium or self.config.get("browser"):
-            return
+        if self.auto_install_chromium and not self.config.get("browser"):
+            try:
+                setup_result = await asyncio.to_thread(ensure_chromium_browser, True)
+            except Exception as exc:
+                logger.warning(
+                    "3D dice Chromium auto-install failed. Rendering will retry on demand: %s",
+                    exc,
+                )
+                return
 
-        try:
-            setup_result = await asyncio.to_thread(ensure_chromium_browser, True)
-        except Exception as exc:
-            logger.warning(
-                "3D dice Chromium auto-install failed. Rendering will retry on demand: %s",
-                exc,
-            )
-            return
+            if setup_result.installed:
+                logger.info("3D dice installed Playwright Chromium automatically.")
 
-        if setup_result.installed:
-            logger.info("3D dice installed Playwright Chromium automatically.")
+        options = build_render_options(self.config)
+        if options.prewarm_render_worker:
+            try:
+                await asyncio.to_thread(
+                    prewarm_render_worker,
+                    browser=options.browser,
+                    width=options.width,
+                    height=options.height,
+                )
+                logger.info("3D dice render worker prewarmed successfully.")
+            except Exception as exc:
+                logger.warning(
+                    "3D dice render worker prewarm failed. Rendering will retry on demand: %s",
+                    exc,
+                )
 
     async def terminate(self) -> None:
         """插件卸载时关闭持久化浏览器会话。"""

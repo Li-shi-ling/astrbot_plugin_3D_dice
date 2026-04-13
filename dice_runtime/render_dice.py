@@ -261,6 +261,25 @@ def render_dice_gif(
     )
 
 
+def prewarm_render_worker(
+    browser: str | None = None,
+    site_dir: Path | None = None,
+    width: int = 900,
+    height: int = 1400,
+) -> None:
+    """Start the persistent worker and load the dice page before the first roll."""
+    worker = get_render_worker()
+    try:
+        worker.prewarm(browser=browser, site_dir=site_dir, width=width, height=height)
+    except RenderWorkerRequestError:
+        raise
+    except Exception:
+        close_render_worker()
+        get_render_worker().prewarm(
+            browser=browser, site_dir=site_dir, width=width, height=height
+        )
+
+
 class RenderWorkerProcess:
     """Persistent render subprocess that owns Playwright and Chromium."""
 
@@ -272,7 +291,18 @@ class RenderWorkerProcess:
         with self.lock:
             self.start()
             try:
-                return self._send_render_request(kwargs)
+                return self._send_request("render", kwargs)
+            except RenderWorkerRequestError:
+                raise
+            except Exception:
+                self.close()
+                raise
+
+    def prewarm(self, **kwargs: Any) -> None:
+        with self.lock:
+            self.start()
+            try:
+                self._send_request("prewarm", kwargs)
             except RenderWorkerRequestError:
                 raise
             except Exception:
@@ -308,7 +338,7 @@ class RenderWorkerProcess:
             process.kill()
             process.wait(timeout=5)
 
-    def _send_render_request(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+    def _send_request(self, action: str, kwargs: dict[str, Any]) -> dict[str, Any]:
         if (
             self.process is None
             or self.process.stdin is None
@@ -317,8 +347,11 @@ class RenderWorkerProcess:
             raise RuntimeError("3D dice render worker is not running")
 
         payload = {
-            key: str(value) if isinstance(value, Path) else value
-            for key, value in kwargs.items()
+            "action": action,
+            "options": {
+                key: str(value) if isinstance(value, Path) else value
+                for key, value in kwargs.items()
+            },
         }
         self.process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
         self.process.stdin.flush()
@@ -1290,14 +1323,45 @@ def _normalize_render_options(options: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _prewarm_render_impl(
+    browser: str | None = None,
+    site_dir: Path | None = None,
+    width: int = 900,
+    height: int = 1400,
+) -> dict[str, Any]:
+    site_dir = Path(site_dir or (PROJECT_DIR / "dice_roller_app")).resolve()
+    browser_path = browser or detect_browser_path()
+    if not site_dir.exists():
+        raise FileNotFoundError(f"Site directory not found: {site_dir}")
+    if not browser_path:
+        raise FileNotFoundError(
+            "Could not find a local Chromium/Chrome/Edge executable. Pass browser=..."
+        )
+    session = get_persisted_session(
+        browser_path=browser_path,
+        site_dir=site_dir,
+        width=width,
+        height=height,
+        timeout_ms=DEFAULT_TIMEOUT_MS,
+    )
+    return {"ready": session.is_alive()}
+
+
 def _render_worker_loop() -> None:
     try:
         for line in sys.stdin:
             if not line.strip():
                 continue
             try:
-                options = _normalize_render_options(json.loads(line))
-                result = _render_dice_gif_impl(**options)
+                request = json.loads(line)
+                action = request.get("action", "render")
+                options = _normalize_render_options(request.get("options", request))
+                if action == "prewarm":
+                    result = _prewarm_render_impl(**options)
+                elif action == "render":
+                    result = _render_dice_gif_impl(**options)
+                else:
+                    raise ValueError(f"Unsupported render worker action: {action}")
                 response = {"ok": True, "result": result}
             except BaseException as exc:
                 response = {

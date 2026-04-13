@@ -58,6 +58,12 @@
     "default": true,
     "hint": "启用后会等待 3D 场景稳定，再点击 Roll 并开始录制"
   },
+  "prewarm_render_worker": {
+    "description": "启动插件时是否预热渲染进程",
+    "type": "bool",
+    "default": true,
+    "hint": "启用后会在插件初始化时提前启动浏览器并加载骰子页面，减少第一次投骰子的等待时间"
+  },
   "width": {
     "description": "浏览器渲染视口宽度",
     "type": "int",

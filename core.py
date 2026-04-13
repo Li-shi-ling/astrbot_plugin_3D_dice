@@ -38,6 +38,7 @@ class DiceRenderOptions:
     gif_backend: str
     ffmpeg_path: str | None
     better_render_quality: bool
+    prewarm_render_worker: bool
     width: int
     height: int
     parallel_result: bool
@@ -141,6 +142,7 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         "ffmpeg_path": _optional_path_string(config.get("ffmpeg_path")),
         "auto_install_chromium": _bool_value(config.get("auto_install_chromium", True)),
         "better_render_quality": _bool_value(config.get("better_render_quality", True)),
+        "prewarm_render_worker": _bool_value(config.get("prewarm_render_worker", True)),
         "width": _int_in_range(config.get("width", DEFAULT_WIDTH), 320, 1920),
         "height": _int_in_range(config.get("height", DEFAULT_HEIGHT), 320, 2400),
         "parallel_result": _bool_value(config.get("parallel_result", False)),
@@ -156,6 +158,7 @@ def build_render_options(config: dict[str, Any] | None = None) -> DiceRenderOpti
         gif_backend=normalized["gif_backend"],
         ffmpeg_path=normalized["ffmpeg_path"],
         better_render_quality=normalized["better_render_quality"],
+        prewarm_render_worker=normalized["prewarm_render_worker"],
         width=normalized["width"],
         height=normalized["height"],
         parallel_result=normalized["parallel_result"],
