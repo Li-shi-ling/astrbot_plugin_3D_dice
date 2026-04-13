@@ -108,11 +108,13 @@ class ThreeDDicePlugin(Star):
         )
 
         options = build_render_options(self.config)
+        browser_path = options.browser
         try:
-            if self.auto_install_chromium and not options.browser:
+            if self.auto_install_chromium and not browser_path:
                 if not await asyncio.to_thread(detect_browser_path):
                     yield event.plain_result(CHROMIUM_INSTALLING_TEXT)
                 setup_result = await asyncio.to_thread(ensure_chromium_browser, True)
+                browser_path = setup_result.browser_path
                 if setup_result.installed:
                     logger.info("3D dice installed Playwright Chromium on demand.")
             result = await asyncio.to_thread(
@@ -121,7 +123,7 @@ class ThreeDDicePlugin(Star):
                 count=request.count,
                 duration=options.duration,
                 fps=options.fps,
-                browser=options.browser,
+                browser=browser_path,
                 output_dir=self.render_output_dir,
                 width=options.width,
                 height=options.height,
