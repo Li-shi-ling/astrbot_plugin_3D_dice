@@ -30,6 +30,7 @@ DEFAULT_RESULT_TIMEOUT_MS = 8000
 CONFIGURE_TIMEOUT_MS = 5000
 PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
 DEFAULT_CAPTURE_MAX_SIDE = 560
+DEFAULT_CAPTURE_VERTICAL_INSET = 32
 XVFB_ENV = "ASTRBOT_3D_DICE_USE_XVFB"
 XVFB_ACTIVE_ENV = "ASTRBOT_3D_DICE_XVFB"
 
@@ -968,7 +969,7 @@ def configure_dice(page: Any, dice_type: str, dice_count: int) -> None:
 def get_capture_clip(page: Any) -> dict[str, int]:
     clip = page.evaluate(
         """
-        (captureMaxSide) => {
+        ({ captureMaxSide, verticalInset }) => {
           const canvases = [...document.querySelectorAll('canvas')];
           const canvas = canvases.find((candidate) => {
             const rect = candidate.getBoundingClientRect();
@@ -987,12 +988,13 @@ def get_capture_clip(page: Any) -> dict[str, int]:
           const maxSide = Math.max(1, Math.min(window.innerWidth, window.innerHeight, captureMaxSide));
           const desiredSide = Math.max(rect.width, rect.height, 520);
           const side = Math.floor(Math.min(maxSide, desiredSide));
-          const centeredY = rect.top + (rect.height / 2) - (side / 2);
+          const height = Math.max(1, side - (verticalInset * 2));
+          const centeredY = rect.top + (rect.height / 2) - (height / 2);
           const minY = Math.max(0, Math.floor(topControlBottom + 8));
-          const maxY = Math.max(0, Math.floor(rollTop - side - 8));
+          const maxY = Math.max(0, Math.floor(rollTop - height - 8));
           const y = maxY >= minY
             ? Math.min(Math.max(centeredY, minY), maxY)
-            : Math.max(0, Math.min(centeredY, window.innerHeight - side));
+            : Math.max(0, Math.min(centeredY, window.innerHeight - height));
           const centeredX = rect.left + (rect.width / 2) - (side / 2);
           const x = Math.max(0, Math.min(centeredX, window.innerWidth - side));
 
@@ -1000,11 +1002,14 @@ def get_capture_clip(page: Any) -> dict[str, int]:
             x: Math.floor(x),
             y: Math.floor(y),
             width: side,
-            height: side,
+            height,
           };
         }
         """,
-        DEFAULT_CAPTURE_MAX_SIDE,
+        {
+            "captureMaxSide": DEFAULT_CAPTURE_MAX_SIDE,
+            "verticalInset": DEFAULT_CAPTURE_VERTICAL_INSET,
+        },
     )
     if not clip:
         raise RuntimeError("Could not locate dice canvas")
