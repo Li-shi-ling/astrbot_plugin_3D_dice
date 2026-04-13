@@ -6,7 +6,13 @@ from pathlib import Path
 from typing import Any
 
 SUPPORTED_DICE_TYPES = ("D4", "D6", "D8", "D20")
-SUPPORTED_GIF_BACKENDS = ("screenshot", "webm_ffmpeg", "cdp_screencast")
+SUPPORTED_GIF_BACKENDS = (
+    "screenshot",
+    "webm_ffmpeg",
+    "cdp_screencast",
+    "cdp_screencast_limited",
+    "cdp_screencast_ffmpeg",
+)
 COMMAND_NAMES = ("3d_dice", "3ddice", "dice3d", "roll3d", "投骰子", "骰子")
 MAX_APP_DICE_COUNT = 6
 DEFAULT_DICE_TYPE = "D6"
@@ -37,6 +43,7 @@ class DiceRenderOptions:
     browser: str | None
     gif_backend: str
     ffmpeg_path: str | None
+    screencast_quality: int
     better_render_quality: bool
     prewarm_render_worker: bool
     width: int
@@ -139,9 +146,12 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         "fps": _int_in_range(config.get("fps", DEFAULT_FPS), 4, 30),
         "browser": _optional_path_string(config.get("browser")),
         "gif_backend": normalize_gif_backend(
-            config.get("gif_backend", "cdp_screencast")
+            config.get("gif_backend", "cdp_screencast_limited")
         ),
         "ffmpeg_path": _optional_path_string(config.get("ffmpeg_path")),
+        "screencast_quality": _int_in_range(
+            config.get("screencast_quality", 80), 50, 95
+        ),
         "auto_install_chromium": _bool_value(config.get("auto_install_chromium", True)),
         "better_render_quality": _bool_value(
             config.get("better_render_quality", False)
@@ -161,6 +171,7 @@ def build_render_options(config: dict[str, Any] | None = None) -> DiceRenderOpti
         browser=normalized["browser"],
         gif_backend=normalized["gif_backend"],
         ffmpeg_path=normalized["ffmpeg_path"],
+        screencast_quality=normalized["screencast_quality"],
         better_render_quality=normalized["better_render_quality"],
         prewarm_render_worker=normalized["prewarm_render_worker"],
         width=normalized["width"],

@@ -125,6 +125,7 @@ class ThreeDDicePlugin(Star):
                 height=options.height,
                 gif_backend=options.gif_backend,
                 ffmpeg_path=options.ffmpeg_path,
+                screencast_quality=options.screencast_quality,
                 better_render_quality=options.better_render_quality,
                 parallel_result=options.parallel_result,
             )

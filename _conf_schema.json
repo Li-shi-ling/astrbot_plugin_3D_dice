@@ -36,9 +36,15 @@
   "gif_backend": {
     "description": "GIF 生成方式",
     "type": "string",
-    "default": "cdp_screencast",
-    "options": ["screenshot", "webm_ffmpeg", "cdp_screencast"],
-    "hint": "screenshot 为逐帧截图方案；webm_ffmpeg 会先录制 WebM，再用 ffmpeg 转换为 GIF；cdp_screencast 使用 Chromium DevTools 录屏帧生成 GIF"
+    "default": "cdp_screencast_limited",
+    "options": ["screenshot", "webm_ffmpeg", "cdp_screencast", "cdp_screencast_limited", "cdp_screencast_ffmpeg"],
+    "hint": "screenshot 为逐帧截图方案；webm_ffmpeg 会先录制 WebM，再用 ffmpeg 转换为 GIF；cdp_screencast 使用 Chromium DevTools 录屏帧生成 GIF；limited 会按时间戳限帧；ffmpeg 会边收帧边写入 ffmpeg"
+  },
+  "screencast_quality": {
+    "description": "CDP 录屏帧 JPEG 质量",
+    "type": "int",
+    "default": 80,
+    "hint": "仅 cdp_screencast 系列后端使用；建议 70 到 85，数值越低帧数据越小"
   },
   "ffmpeg_path": {
     "description": "ffmpeg 可执行文件路径",

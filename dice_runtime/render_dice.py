@@ -253,6 +253,7 @@ def render_dice_gif(
     height: int = 1400,
     gif_backend: str = "screenshot",
     ffmpeg_path: str | None = None,
+    screencast_quality: int = 80,
     better_render_quality: bool = True,
     parallel_result: bool = False,
 ) -> dict[str, Any]:
@@ -269,6 +270,7 @@ def render_dice_gif(
         height=height,
         gif_backend=gif_backend,
         ffmpeg_path=ffmpeg_path,
+        screencast_quality=screencast_quality,
         better_render_quality=better_render_quality,
         parallel_result=parallel_result,
     )
@@ -458,6 +460,7 @@ def _render_dice_gif_impl(
     height: int = 1400,
     gif_backend: str = "screenshot",
     ffmpeg_path: str | None = None,
+    screencast_quality: int = 80,
     better_render_quality: bool = True,
     parallel_result: bool = False,
 ) -> dict[str, Any]:
@@ -481,7 +484,13 @@ def _render_dice_gif_impl(
         raise FileNotFoundError(
             "Could not find a local Chromium/Chrome/Edge executable. Pass browser=..."
         )
-    if gif_backend not in {"screenshot", "webm_ffmpeg", "cdp_screencast"}:
+    if gif_backend not in {
+        "screenshot",
+        "webm_ffmpeg",
+        "cdp_screencast",
+        "cdp_screencast_limited",
+        "cdp_screencast_ffmpeg",
+    }:
         raise ValueError(f"Unsupported GIF backend: {gif_backend}")
 
     frame_delay = max(20, round(1000 / max(1, fps)))
@@ -531,7 +540,7 @@ def _render_dice_gif_impl(
                     )
                 finally:
                     webm_path.unlink(missing_ok=True)
-            elif gif_backend == "cdp_screencast":
+            elif gif_backend in {"cdp_screencast", "cdp_screencast_limited"}:
                 trigger_roll(page)
                 if better_render_quality:
                     wait_for_roll_start(page, clip, baseline_frame)
@@ -544,8 +553,32 @@ def _render_dice_gif_impl(
                     fps=fps,
                     width=width,
                     height=height,
+                    quality=screencast_quality,
+                    limit_to_fps=gif_backend == "cdp_screencast_limited",
                 )
                 write_gif(frames, output_path, frame_delay)
+            elif gif_backend == "cdp_screencast_ffmpeg":
+                resolved_ffmpeg = find_ffmpeg_path(ffmpeg_path)
+                if not resolved_ffmpeg:
+                    raise FileNotFoundError(
+                        "ffmpeg was not found. Set ffmpeg_path or add ffmpeg to PATH."
+                    )
+                trigger_roll(page)
+                if better_render_quality:
+                    wait_for_roll_start(page, clip, baseline_frame)
+                else:
+                    wait_for_animation_start(page, clip, baseline_frame, 2000)
+                capture_screencast_gif_ffmpeg(
+                    page=page,
+                    clip=clip,
+                    output_path=output_path,
+                    duration=duration,
+                    fps=fps,
+                    width=width,
+                    height=height,
+                    quality=screencast_quality,
+                    ffmpeg_path=resolved_ffmpeg,
+                )
             else:
                 trigger_roll(page)
                 if better_render_quality:
@@ -962,24 +995,39 @@ def capture_screencast_frames(
     fps: int,
     width: int,
     height: int,
+    quality: int = 80,
+    limit_to_fps: bool = False,
 ) -> list[Image.Image]:
     client = page.context.new_cdp_session(page)
     encoded_frames: list[str] = []
+    target_interval = 1 / max(1, int(fps))
+    last_kept_timestamp: float | None = None
 
     def handle_frame(event: dict[str, Any]) -> None:
-        data = event.get("data")
-        if data:
-            encoded_frames.append(str(data))
         session_id = event.get("sessionId")
         if session_id is not None:
             client.send("Page.screencastFrameAck", {"sessionId": session_id})
+        data = event.get("data")
+        if not data:
+            return
+        if limit_to_fps:
+            nonlocal last_kept_timestamp
+            timestamp = get_screencast_timestamp(event)
+            if (
+                timestamp is not None
+                and last_kept_timestamp is not None
+                and timestamp - last_kept_timestamp < target_interval
+            ):
+                return
+            last_kept_timestamp = timestamp
+        encoded_frames.append(str(data))
 
     client.on("Page.screencastFrame", handle_frame)
     client.send(
         "Page.startScreencast",
         {
             "format": "jpeg",
-            "quality": 85,
+            "quality": int(quality),
             "maxWidth": int(width),
             "maxHeight": int(height),
             "everyNthFrame": 1,
@@ -1005,6 +1053,136 @@ def capture_screencast_frames(
         )
         for encoded_frame in selected_frames
     ]
+
+
+def get_screencast_timestamp(event: dict[str, Any]) -> float | None:
+    metadata = event.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    value = metadata.get("timestamp")
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def capture_screencast_gif_ffmpeg(
+    page: Any,
+    clip: dict[str, int],
+    output_path: Path,
+    duration: int,
+    fps: int,
+    width: int,
+    height: int,
+    quality: int,
+    ffmpeg_path: str,
+) -> None:
+    process = start_screencast_ffmpeg_process(
+        output_path=output_path,
+        clip=clip,
+        fps=fps,
+        ffmpeg_path=ffmpeg_path,
+    )
+    client = page.context.new_cdp_session(page)
+    target_interval = 1 / max(1, int(fps))
+    last_kept_timestamp: float | None = None
+    frames_written = 0
+
+    def handle_frame(event: dict[str, Any]) -> None:
+        nonlocal frames_written, last_kept_timestamp
+        session_id = event.get("sessionId")
+        if session_id is not None:
+            client.send("Page.screencastFrameAck", {"sessionId": session_id})
+        data = event.get("data")
+        if not data or process.stdin is None or process.poll() is not None:
+            return
+        timestamp = get_screencast_timestamp(event)
+        if (
+            timestamp is not None
+            and last_kept_timestamp is not None
+            and timestamp - last_kept_timestamp < target_interval
+        ):
+            return
+        last_kept_timestamp = timestamp
+        try:
+            process.stdin.write(base64.b64decode(str(data)))
+            process.stdin.flush()
+            frames_written += 1
+        except BrokenPipeError:
+            return
+
+    client.on("Page.screencastFrame", handle_frame)
+    client.send(
+        "Page.startScreencast",
+        {
+            "format": "jpeg",
+            "quality": int(quality),
+            "maxWidth": int(width),
+            "maxHeight": int(height),
+            "everyNthFrame": 1,
+        },
+    )
+    try:
+        page.wait_for_timeout(max(100, int(duration)))
+    finally:
+        try:
+            client.send("Page.stopScreencast")
+        finally:
+            client.detach()
+        if process.stdin:
+            process.stdin.close()
+
+    try:
+        process.wait(timeout=120)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+    stdout = process.stdout.read().decode(errors="replace") if process.stdout else ""
+    stderr = process.stderr.read().decode(errors="replace") if process.stderr else ""
+    if frames_written <= 0:
+        raise RuntimeError("CDP screencast returned no frames for ffmpeg")
+    if process.returncode != 0:
+        output = "\n".join(
+            part.strip() for part in (stdout, stderr) if part and part.strip()
+        )
+        raise RuntimeError(f"ffmpeg failed to encode CDP screencast GIF: {output}")
+    if not output_path.exists() or output_path.stat().st_size <= 0:
+        raise RuntimeError("ffmpeg did not create a CDP screencast GIF output")
+
+
+def start_screencast_ffmpeg_process(
+    output_path: Path,
+    clip: dict[str, int],
+    fps: int,
+    ffmpeg_path: str,
+) -> subprocess.Popen[bytes]:
+    crop_filter = (
+        f"crop={int(clip['width'])}:{int(clip['height'])}:"
+        f"{int(clip['x'])}:{int(clip['y'])}"
+    )
+    return subprocess.Popen(
+        [
+            ffmpeg_path,
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "image2pipe",
+            "-framerate",
+            str(max(1, int(fps))),
+            "-vcodec",
+            "mjpeg",
+            "-i",
+            "pipe:0",
+            "-vf",
+            crop_filter,
+            "-loop",
+            "0",
+            str(output_path),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
 
 
 def sample_evenly(items: list[str], target_count: int) -> list[str]:
