@@ -26,6 +26,7 @@ PROJECT_DIR = RUNTIME_DIR.parent
 DEFAULT_TIMEOUT_MS = 60000
 DEFAULT_RESULT_TIMEOUT_MS = 8000
 CONFIGURE_TIMEOUT_MS = 5000
+DICE_UI_READY_TIMEOUT_MS = 15000
 PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
 
 # A single persistent browser/page is reused between render requests.
@@ -100,10 +101,37 @@ class PersistedBrowserSession:
         if not self._ready or self._page is None:
             return False
         try:
-            self._page.evaluate("() => true")
-            return True
+            return is_dice_ui_ready(self._page)
         except Exception:
             return False
+
+    def reload_page(self) -> tuple[Any, dict[str, int]]:
+        if self._page is None:
+            raise RuntimeError("Persisted browser page is not available")
+        self._page.reload(wait_until="domcontentloaded", timeout=self.timeout_ms)
+        wait_for_dice_app(self._page)
+        self._clip = get_capture_clip(self._page)
+        return self._page, self._clip
+
+    def reset_page(self) -> tuple[Any, dict[str, int]]:
+        if self._context is None or self._server is None:
+            raise RuntimeError("Persisted browser context is not available")
+        if self._page is not None:
+            try:
+                self._page.close()
+            except Exception:
+                pass
+        base_url = f"http://127.0.0.1:{self._server.port}/index.html"
+        self._page = self._context.new_page()
+        self._page.set_default_timeout(self.timeout_ms)
+        self._page.set_default_navigation_timeout(self.timeout_ms)
+        self._page.goto(
+            base_url, wait_until="domcontentloaded", timeout=self.timeout_ms
+        )
+        wait_for_dice_app(self._page)
+        self._clip = get_capture_clip(self._page)
+        self._ready = True
+        return self._page, self._clip
 
     def matches(
         self,
@@ -508,7 +536,28 @@ def _render_dice_gif_impl(
         page, clip = session.get_page_and_clip()
 
         try:
-            configure_dice(page, dice_type=dice_type, dice_count=count)
+            try:
+                configure_dice(page, dice_type=dice_type, dice_count=count)
+            except Exception as first_exc:
+                before_reload = read_dice_ui_snapshot(page)
+                try:
+                    page, clip = session.reload_page()
+                    configure_dice(page, dice_type=dice_type, dice_count=count)
+                except Exception as reload_exc:
+                    before_reset = read_dice_ui_snapshot(page)
+                    try:
+                        page, clip = session.reset_page()
+                        configure_dice(page, dice_type=dice_type, dice_count=count)
+                    except Exception as reset_exc:
+                        after_reset = read_dice_ui_snapshot(page)
+                        raise RuntimeError(
+                            "Could not configure dice UI after reload and page reset. "
+                            f"first_error={first_exc}; reload_error={reload_exc}; "
+                            f"reset_error={reset_exc}; "
+                            f"before_reload={format_dice_ui_snapshot(before_reload)}; "
+                            f"before_reset={format_dice_ui_snapshot(before_reset)}; "
+                            f"after_reset={format_dice_ui_snapshot(after_reset)}"
+                        ) from reset_exc
             if better_render_quality:
                 wait_for_stable_render(page, clip)
             baseline_frame = capture_clip_png(page, clip)
@@ -700,17 +749,106 @@ def install_playwright_chromium() -> None:
     )
 
 
-def wait_for_dice_app(page: Any) -> None:
-    """Wait until the dice app has mounted and WebGL is ready."""
+def read_dice_ui_snapshot(page: Any) -> dict[str, Any]:
+    """Return a compact browser-side snapshot for readiness diagnostics."""
+    try:
+        return page.evaluate(
+            """
+            () => {
+              const clean = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+              const buttons = [...document.querySelectorAll('button')].map((button) => clean(button.textContent));
+              const headings = [...document.querySelectorAll('h1, h2')].map((node) => clean(node.textContent));
+              const canvases = [...document.querySelectorAll('canvas')].map((canvas) => {
+                const rect = canvas.getBoundingClientRect();
+                let webglReady = false;
+                try {
+                  const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+                  webglReady = Boolean(gl && gl.drawingBufferWidth > 0 && gl.drawingBufferHeight > 0);
+                } catch {
+                  webglReady = false;
+                }
+                return {
+                  width: Math.round(rect.width),
+                  height: Math.round(rect.height),
+                  bufferWidth: canvas.width,
+                  bufferHeight: canvas.height,
+                  webglReady,
+                };
+              });
+              const dieButtons = buttons.filter((text) => /^D\\d+$/i.test(text));
+              const rollButtons = buttons.filter((text) => /roll/i.test(text));
+              const countHeadings = headings.filter((text) => /^\\d+\\s+(Die|Dice)$/i.test(text));
+              return {
+                url: location.href,
+                title: document.title,
+                readyState: document.readyState,
+                buttonCount: buttons.length,
+                buttons: buttons.slice(0, 24),
+                dieButtons,
+                rollButtonCount: rollButtons.length,
+                headings: headings.slice(0, 12),
+                countHeadings,
+                canvasCount: canvases.length,
+                canvases,
+                uiReady: dieButtons.length > 0 && rollButtons.length > 0 && countHeadings.length > 0,
+              };
+            }
+            """
+        )
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def format_dice_ui_snapshot(snapshot: dict[str, Any]) -> str:
+    return json.dumps(snapshot, ensure_ascii=False, sort_keys=True)
+
+
+def is_dice_ui_ready(page: Any) -> bool:
+    return bool(
+        page.evaluate(
+            """
+            () => {
+              const clean = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+              const buttons = [...document.querySelectorAll('button')].map((button) => clean(button.textContent));
+              const headings = [...document.querySelectorAll('h1, h2')].map((node) => clean(node.textContent));
+              const canvas = document.querySelector('canvas');
+              return Boolean(
+                canvas &&
+                buttons.some((text) => /^D\\d+$/i.test(text)) &&
+                buttons.some((text) => /roll/i.test(text)) &&
+                headings.some((text) => /^\\d+\\s+(Die|Dice)$/i.test(text))
+              );
+            }
+            """
+        )
+    )
+
+
+def wait_for_dice_controls(
+    page: Any, timeout_ms: int = DICE_UI_READY_TIMEOUT_MS
+) -> None:
     page.wait_for_function(
         """
         () => {
+          const clean = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+          const buttons = [...document.querySelectorAll('button')].map((button) => clean(button.textContent));
+          const headings = [...document.querySelectorAll('h1, h2')].map((node) => clean(node.textContent));
           const canvas = document.querySelector('canvas');
-          const buttons = [...document.querySelectorAll('button')];
-          return Boolean(canvas && buttons.some((button) => /roll/i.test(button.textContent || '')));
+          return Boolean(
+            canvas &&
+            buttons.some((text) => /^D\\d+$/i.test(text)) &&
+            buttons.some((text) => /roll/i.test(text)) &&
+            headings.some((text) => /^\\d+\\s+(Die|Dice)$/i.test(text))
+          );
         }
-        """
+        """,
+        timeout=timeout_ms,
     )
+
+
+def wait_for_dice_app(page: Any) -> None:
+    """Wait until the dice app has mounted, hydrated, and WebGL is ready."""
+    wait_for_dice_controls(page)
     page.wait_for_selector("canvas")
     page.wait_for_function(
         """
@@ -761,6 +899,7 @@ def wait_for_roll_start(
 
 
 def configure_dice(page: Any, dice_type: str, dice_count: int) -> None:
+    wait_for_dice_controls(page, timeout_ms=CONFIGURE_TIMEOUT_MS)
     page.evaluate(
         """
         (label) => {
