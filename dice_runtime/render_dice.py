@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-import queue
 import secrets
 import socketserver
 import subprocess
 import sys
 import threading
 import time
-from concurrent.futures import Future
 from dataclasses import dataclass
 from functools import partial
 from http.server import SimpleHTTPRequestHandler
@@ -30,11 +27,6 @@ PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
 # A single persistent browser/page is reused between render requests.
 _session_lock = threading.Lock()
 _persisted_session: PersistedBrowserSession | None = None
-_render_queue: (
-    queue.Queue[tuple[Any, tuple[Any, ...], dict[str, Any], Future[Any]]] | None
-) = None
-_render_worker_lock = threading.Lock()
-_render_thread_id: int | None = None
 
 
 class PersistedBrowserSession:
@@ -196,7 +188,7 @@ def _close_persisted_session_impl() -> None:
 
 def close_persisted_session() -> None:
     """Close and clear the global persistent browser session."""
-    _run_in_render_thread(_close_persisted_session_impl)
+    _close_persisted_session_impl()
 
 
 @dataclass(frozen=True)
@@ -229,46 +221,6 @@ def get_sync_playwright() -> Any:
     return sync_playwright
 
 
-def _run_in_render_thread(function: Any, *args: Any, **kwargs: Any) -> Any:
-    if threading.get_ident() == _render_thread_id:
-        return function(*args, **kwargs)
-    worker_queue = _ensure_render_worker()
-    future: Future[Any] = Future()
-    worker_queue.put((function, args, kwargs, future))
-    return future.result()
-
-
-def _ensure_render_worker() -> queue.Queue[
-    tuple[Any, tuple[Any, ...], dict[str, Any], Future[Any]]
-]:
-    global _render_queue
-    with _render_worker_lock:
-        if _render_queue is None:
-            _render_queue = queue.Queue()
-            worker = threading.Thread(
-                target=_render_worker_loop,
-                name="astrbot-3d-dice-render",
-                daemon=True,
-            )
-            worker.start()
-        return _render_queue
-
-
-def _render_worker_loop() -> None:
-    global _render_thread_id
-    _render_thread_id = threading.get_ident()
-    asyncio.set_event_loop(None)
-    assert _render_queue is not None
-    while True:
-        function, args, kwargs, future = _render_queue.get()
-        if future.set_running_or_notify_cancel():
-            try:
-                asyncio.set_event_loop(None)
-                future.set_result(function(*args, **kwargs))
-            except BaseException as exc:
-                future.set_exception(exc)
-
-
 def render_dice_gif(
     dice_type: str = "D6",
     count: int = 1,
@@ -283,8 +235,7 @@ def render_dice_gif(
     better_render_quality: bool = True,
     parallel_result: bool = False,
 ) -> dict[str, Any]:
-    return _run_in_render_thread(
-        _render_dice_gif_impl,
+    return _render_dice_gif_subprocess(
         dice_type=dice_type,
         count=count,
         duration=duration,
@@ -298,6 +249,37 @@ def render_dice_gif(
         better_render_quality=better_render_quality,
         parallel_result=parallel_result,
     )
+
+
+def _render_dice_gif_subprocess(**kwargs: Any) -> dict[str, Any]:
+    payload = {
+        key: str(value) if isinstance(value, Path) else value
+        for key, value in kwargs.items()
+    }
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--render-json",
+            json.dumps(payload, ensure_ascii=False),
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=180,
+    )
+    if completed.returncode != 0:
+        output = "\n".join(
+            part.strip()
+            for part in (completed.stdout, completed.stderr)
+            if part and part.strip()
+        )
+        raise RuntimeError(output or "3D dice render subprocess failed")
+
+    lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    if not lines:
+        raise RuntimeError("3D dice render subprocess did not return a result")
+    return json.loads(lines[-1])
 
 
 def _render_dice_gif_impl(
@@ -959,5 +941,16 @@ class StaticServer:
 
 
 if __name__ == "__main__":
-    result = render_dice_gif()
-    print(json.dumps(result, ensure_ascii=False))
+    if len(sys.argv) >= 3 and sys.argv[1] == "--render-json":
+        options = json.loads(sys.argv[2])
+        for path_key in ("output_dir", "site_dir"):
+            if options.get(path_key):
+                options[path_key] = Path(options[path_key])
+        try:
+            result = _render_dice_gif_impl(**options)
+        finally:
+            _close_persisted_session_impl()
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        result = render_dice_gif()
+        print(json.dumps(result, ensure_ascii=False))
