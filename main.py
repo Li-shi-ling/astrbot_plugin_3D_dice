@@ -10,7 +10,10 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools, register
 
 from .core import (
+    DEPENDENCY_UNAVAILABLE_TEXT,
+    RENDER_FAILED_TEXT,
     build_render_options,
+    format_request_error,
     format_success_text,
     normalize_config,
     output_directory,
@@ -74,17 +77,21 @@ class ThreeDDicePlugin(Star):
     async def roll_dice(self, event: AstrMessageEvent):
         """Roll 3D dice and return an animated GIF."""
         if not is_playwright_available():
-            yield event.plain_result(playwright_install_reminder())
+            logger.warning(playwright_install_reminder())
+            yield event.plain_result(DEPENDENCY_UNAVAILABLE_TEXT)
             return
 
         try:
             request = parse_roll_request(event.message_str, self.config)
         except ValueError as exc:
-            yield event.plain_result(f"{exc}\n{usage_text(self.config['max_count'])}")
+            logger.info("3D dice rejected user request: %s", exc)
+            yield event.plain_result(
+                format_request_error(exc, self.config["max_count"])
+            )
             return
 
         yield event.plain_result(
-            f"Rolling {request.count} {request.dice_type} dice. Rendering may take a moment..."
+            f"正在投掷 {request.count} 个 {request.dice_type}，渲染 GIF 可能需要一点时间..."
         )
 
         options = build_render_options(self.config)
@@ -104,9 +111,9 @@ class ThreeDDicePlugin(Star):
                 better_render_quality=options.better_render_quality,
                 parallel_result=options.parallel_result,
             )
-        except Exception as exc:
+        except Exception:
             logger.exception("3D dice render failed")
-            yield event.plain_result(f"3D dice render failed: {exc}")
+            yield event.plain_result(RENDER_FAILED_TEXT)
             return
 
         gif_path = str(Path(result["gif_path"]).resolve())
@@ -121,7 +128,8 @@ class ThreeDDicePlugin(Star):
     async def help(self, event: AstrMessageEvent):
         """Show 3D dice usage."""
         if not is_playwright_available():
-            yield event.plain_result(playwright_install_reminder())
+            logger.warning(playwright_install_reminder())
+            yield event.plain_result(DEPENDENCY_UNAVAILABLE_TEXT)
             return
 
         yield event.plain_result(usage_text(self.config["max_count"]))

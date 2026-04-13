@@ -14,6 +14,13 @@ DEFAULT_DURATION_MS = 2400
 DEFAULT_FPS = 16
 DEFAULT_WIDTH = 900
 DEFAULT_HEIGHT = 1400
+DEPENDENCY_UNAVAILABLE_TEXT = (
+    "3D骰子功能还没准备好：缺少 Playwright 或 Chromium。请联系管理员安装依赖后再试。"
+)
+RENDER_FAILED_TEXT = (
+    "这次3D骰子没有渲染成功，详细错误已经写入日志。"
+    "请稍后再试，或联系管理员查看 AstrBot 日志。"
+)
 
 
 @dataclass(frozen=True)
@@ -152,6 +159,18 @@ def format_success_text(result: dict[str, Any]) -> str:
         return f"3D dice result: {dice_type} x {dice_count}; total {total}{suffix}"
     detail = " + ".join(str(value) for value in results)
     return f"3D dice result: {dice_type} x {len(results)} = {detail}; total {total}{suffix}"
+
+
+def format_request_error(error: ValueError, max_count: int = MAX_APP_DICE_COUNT) -> str:
+    message = str(error)
+    if "Unsupported dice type" in message:
+        supported = "/".join(SUPPORTED_DICE_TYPES)
+        return (
+            f"这个骰子类型暂时不支持。当前可用：{supported}。\n{usage_text(max_count)}"
+        )
+    if "count" in message.lower() or "integer" in message.lower():
+        return f"骰子数量需要在 1 到 {max_count} 之间。\n{usage_text(max_count)}"
+    return f"指令格式没有识别出来。\n{usage_text(max_count)}"
 
 
 def usage_text(max_count: int = MAX_APP_DICE_COUNT) -> str:
