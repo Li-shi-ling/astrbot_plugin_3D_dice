@@ -1,6 +1,6 @@
 name: astrbot_plugin_3D_dice
 display_name: 3D Dice
-desc: Roll 3D animated dice and return the result as a GIF.
+desc: 掷出3D动态骰子并以GIF格式返回结果。
 version: v1.0.0
 author: Lishining
 repo: https://github.com/Li-shi-ling/astrbot_plugin_3D_dice
