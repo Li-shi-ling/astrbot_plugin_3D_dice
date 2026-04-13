@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from dataclasses import dataclass
 from functools import partial
 from http.server import SimpleHTTPRequestHandler
@@ -29,6 +30,8 @@ PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
 # A single persistent browser/page is reused between render requests.
 _session_lock = threading.Lock()
 _persisted_session: PersistedBrowserSession | None = None
+_render_worker_lock = threading.Lock()
+_render_worker_process: RenderWorkerProcess | None = None
 
 
 class PersistedBrowserSession:
@@ -191,6 +194,7 @@ def _close_persisted_session_impl() -> None:
 def close_persisted_session() -> None:
     """Close and clear the global persistent browser session."""
     _close_persisted_session_impl()
+    close_render_worker()
 
 
 @dataclass(frozen=True)
@@ -239,7 +243,7 @@ def render_dice_gif(
     better_render_quality: bool = True,
     parallel_result: bool = False,
 ) -> dict[str, Any]:
-    return _render_dice_gif_subprocess(
+    return _render_dice_gif_worker(
         dice_type=dice_type,
         count=count,
         duration=duration,
@@ -255,6 +259,105 @@ def render_dice_gif(
         better_render_quality=better_render_quality,
         parallel_result=parallel_result,
     )
+
+
+class RenderWorkerProcess:
+    """Persistent render subprocess that owns Playwright and Chromium."""
+
+    def __init__(self) -> None:
+        self.process: subprocess.Popen[str] | None = None
+        self.lock = threading.Lock()
+
+    def render(self, **kwargs: Any) -> dict[str, Any]:
+        with self.lock:
+            self.start()
+            try:
+                return self._send_render_request(kwargs)
+            except Exception:
+                self.close()
+                raise
+
+    def start(self) -> None:
+        if self.process is not None and self.process.poll() is None:
+            return
+        self.close()
+        self.process = subprocess.Popen(
+            [sys.executable, str(Path(__file__).resolve()), "--worker-json"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+        )
+
+    def close(self) -> None:
+        process = self.process
+        self.process = None
+        if process is None:
+            return
+        try:
+            if process.stdin:
+                process.stdin.close()
+        except Exception:
+            pass
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+
+    def _send_render_request(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        if (
+            self.process is None
+            or self.process.stdin is None
+            or self.process.stdout is None
+        ):
+            raise RuntimeError("3D dice render worker is not running")
+
+        payload = {
+            key: str(value) if isinstance(value, Path) else value
+            for key, value in kwargs.items()
+        }
+        self.process.stdin.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        self.process.stdin.flush()
+        line = self.process.stdout.readline()
+        if not line:
+            raise RuntimeError(
+                "3D dice render worker stopped before returning a result"
+            )
+
+        response = json.loads(line)
+        if response.get("ok"):
+            return response["result"]
+        error = str(response.get("error") or "3D dice render worker failed")
+        details = str(response.get("traceback") or "").strip()
+        raise RuntimeError(f"{error}\n{details}".strip())
+
+
+def _render_dice_gif_worker(**kwargs: Any) -> dict[str, Any]:
+    worker = get_render_worker()
+    try:
+        return worker.render(**kwargs)
+    except Exception:
+        # Retry once with a fresh worker in case the persistent subprocess died.
+        close_render_worker()
+        return get_render_worker().render(**kwargs)
+
+
+def get_render_worker() -> RenderWorkerProcess:
+    global _render_worker_process
+    with _render_worker_lock:
+        if _render_worker_process is None:
+            _render_worker_process = RenderWorkerProcess()
+        return _render_worker_process
+
+
+def close_render_worker() -> None:
+    global _render_worker_process
+    with _render_worker_lock:
+        if _render_worker_process is not None:
+            _render_worker_process.close()
+            _render_worker_process = None
 
 
 def _render_dice_gif_subprocess(**kwargs: Any) -> dict[str, Any]:
@@ -1171,12 +1274,39 @@ class StaticServer:
             self.thread.join(timeout=2)
 
 
+def _normalize_render_options(options: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(options)
+    for path_key in ("output_dir", "site_dir"):
+        if normalized.get(path_key):
+            normalized[path_key] = Path(normalized[path_key])
+    return normalized
+
+
+def _render_worker_loop() -> None:
+    try:
+        for line in sys.stdin:
+            if not line.strip():
+                continue
+            try:
+                options = _normalize_render_options(json.loads(line))
+                result = _render_dice_gif_impl(**options)
+                response = {"ok": True, "result": result}
+            except BaseException as exc:
+                response = {
+                    "ok": False,
+                    "error": str(exc),
+                    "traceback": traceback.format_exc(),
+                }
+            print(json.dumps(response, ensure_ascii=False), flush=True)
+    finally:
+        _close_persisted_session_impl()
+
+
 if __name__ == "__main__":
-    if len(sys.argv) >= 3 and sys.argv[1] == "--render-json":
-        options = json.loads(sys.argv[2])
-        for path_key in ("output_dir", "site_dir"):
-            if options.get(path_key):
-                options[path_key] = Path(options[path_key])
+    if len(sys.argv) >= 2 and sys.argv[1] == "--worker-json":
+        _render_worker_loop()
+    elif len(sys.argv) >= 3 and sys.argv[1] == "--render-json":
+        options = _normalize_render_options(json.loads(sys.argv[2]))
         try:
             result = _render_dice_gif_impl(**options)
         finally:
