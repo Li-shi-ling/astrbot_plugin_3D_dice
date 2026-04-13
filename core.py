@@ -11,10 +11,10 @@ COMMAND_NAMES = ("3d_dice", "3ddice", "dice3d", "roll3d", "投骰子", "骰子")
 MAX_APP_DICE_COUNT = 6
 DEFAULT_DICE_TYPE = "D6"
 DEFAULT_DICE_COUNT = 1
-DEFAULT_DURATION_MS = 2400
-DEFAULT_FPS = 16
-DEFAULT_WIDTH = 900
-DEFAULT_HEIGHT = 1400
+DEFAULT_DURATION_MS = 1200
+DEFAULT_FPS = 8
+DEFAULT_WIDTH = 640
+DEFAULT_HEIGHT = 960
 DEPENDENCY_UNAVAILABLE_TEXT = (
     "3D骰子功能还没准备好：缺少 Playwright 或 Chromium。请联系管理员安装依赖后再试。"
 )
@@ -138,14 +138,18 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         ),
         "fps": _int_in_range(config.get("fps", DEFAULT_FPS), 4, 30),
         "browser": _optional_path_string(config.get("browser")),
-        "gif_backend": normalize_gif_backend(config.get("gif_backend", "screenshot")),
+        "gif_backend": normalize_gif_backend(
+            config.get("gif_backend", "cdp_screencast")
+        ),
         "ffmpeg_path": _optional_path_string(config.get("ffmpeg_path")),
         "auto_install_chromium": _bool_value(config.get("auto_install_chromium", True)),
-        "better_render_quality": _bool_value(config.get("better_render_quality", True)),
+        "better_render_quality": _bool_value(
+            config.get("better_render_quality", False)
+        ),
         "prewarm_render_worker": _bool_value(config.get("prewarm_render_worker", True)),
         "width": _int_in_range(config.get("width", DEFAULT_WIDTH), 320, 1920),
         "height": _int_in_range(config.get("height", DEFAULT_HEIGHT), 320, 2400),
-        "parallel_result": _bool_value(config.get("parallel_result", False)),
+        "parallel_result": _bool_value(config.get("parallel_result", True)),
     }
 
 

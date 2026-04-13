@@ -20,12 +20,12 @@
   "duration": {
     "description": "GIF 录制时长，单位毫秒",
     "type": "int",
-    "default": 2400
+    "default": 1200
   },
   "fps": {
     "description": "GIF 帧率",
     "type": "int",
-    "default": 16
+    "default": 8
   },
   "browser": {
     "description": "可选的 Chromium、Chrome 或 Edge 浏览器可执行文件路径",
@@ -36,7 +36,7 @@
   "gif_backend": {
     "description": "GIF 生成方式",
     "type": "string",
-    "default": "screenshot",
+    "default": "cdp_screencast",
     "options": ["screenshot", "webm_ffmpeg", "cdp_screencast"],
     "hint": "screenshot 为逐帧截图方案；webm_ffmpeg 会先录制 WebM，再用 ffmpeg 转换为 GIF；cdp_screencast 使用 Chromium DevTools 录屏帧生成 GIF"
   },
@@ -55,7 +55,7 @@
   "better_render_quality": {
     "description": "是否启用更好的 GIF 渲染质量",
     "type": "bool",
-    "default": true,
+    "default": false,
     "hint": "启用后会等待 3D 场景稳定，再点击 Roll 并开始录制"
   },
   "prewarm_render_worker": {
@@ -67,19 +67,19 @@
   "width": {
     "description": "浏览器渲染视口宽度",
     "type": "int",
-    "default": 900,
+    "default": 640,
     "hint": "建议不低于 600；过小可能裁切骰子画面"
   },
   "height": {
     "description": "浏览器渲染视口高度",
     "type": "int",
-    "default": 1400,
+    "default": 960,
     "hint": "建议不低于 800；过小可能裁切 canvas 或 GIF 画面"
   },
   "parallel_result": {
     "description": "是否启用更快的结果读取模式",
     "type": "bool",
-    "default": false,
+    "default": true,
     "hint": "启用后在 GIF 捕获完成后立即读取页面结果，可略微减少等待时间"
   }
 }

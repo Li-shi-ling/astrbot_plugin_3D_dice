@@ -54,6 +54,7 @@ class PersistedBrowserSession:
 
         self._playwright_ctx: Any = None
         self._browser: Any = None
+        self._context: Any = None
         self._page: Any = None
         self._server: StaticServer | None = None
         self._clip: dict[str, int] | None = None
@@ -80,11 +81,11 @@ class PersistedBrowserSession:
                 "--mute-audio",
             ],
         )
-        context = self._browser.new_context(
+        self._context = self._browser.new_context(
             viewport={"width": self.width, "height": self.height},
             device_scale_factor=1,
         )
-        self._page = context.new_page()
+        self._page = self._context.new_page()
         self._page.set_default_timeout(self.timeout_ms)
         self._page.set_default_navigation_timeout(self.timeout_ms)
         self._page.goto(
@@ -127,6 +128,16 @@ class PersistedBrowserSession:
     def close(self) -> None:
         self._ready = False
         try:
+            if self._page:
+                self._page.close()
+        except Exception:
+            pass
+        try:
+            if self._context:
+                self._context.close()
+        except Exception:
+            pass
+        try:
             if self._browser:
                 self._browser.close()
         except Exception:
@@ -142,6 +153,7 @@ class PersistedBrowserSession:
         except Exception:
             pass
         self._browser = None
+        self._context = None
         self._page = None
         self._playwright_ctx = None
         self._server = None
