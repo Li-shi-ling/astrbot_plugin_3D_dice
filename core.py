@@ -28,6 +28,10 @@ RENDER_FAILED_TEXT = (
     "这次3D骰子没有渲染成功，详细错误已经写入日志。"
     "请稍后再试，或联系管理员查看 AstrBot 日志。"
 )
+CHROMIUM_INSTALLING_TEXT = (
+    "首次使用需要准备 Chromium 浏览器，正在后台安装。"
+    "这一步可能需要一些时间，后续投骰子会快很多。"
+)
 
 
 @dataclass(frozen=True)

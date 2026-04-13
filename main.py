@@ -10,6 +10,7 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools, register
 
 from .core import (
+    CHROMIUM_INSTALLING_TEXT,
     DEPENDENCY_UNAVAILABLE_TEXT,
     RENDER_FAILED_TEXT,
     build_render_options,
@@ -22,6 +23,7 @@ from .core import (
 )
 from .dice_runtime.render_dice import (
     close_persisted_session,
+    detect_browser_path,
     ensure_chromium_browser,
     is_playwright_available,
     playwright_install_reminder,
@@ -55,25 +57,21 @@ class ThreeDDicePlugin(Star):
             logger.warning(playwright_install_reminder())
             return
 
-        if self.auto_install_chromium and not self.config.get("browser"):
-            try:
-                setup_result = await asyncio.to_thread(ensure_chromium_browser, True)
-            except Exception as exc:
-                logger.warning(
-                    "3D dice Chromium auto-install failed. Rendering will retry on demand: %s",
-                    exc,
-                )
-                return
-
-            if setup_result.installed:
-                logger.info("3D dice installed Playwright Chromium automatically.")
-
         options = build_render_options(self.config)
         if options.prewarm_render_worker:
+            browser_path = options.browser or await asyncio.to_thread(
+                detect_browser_path
+            )
+            if not browser_path:
+                logger.info(
+                    "3D dice render worker prewarm skipped because no Chromium browser was found. "
+                    "Chromium installation will only run on demand."
+                )
+                return
             try:
                 await asyncio.to_thread(
                     prewarm_render_worker,
-                    browser=options.browser,
+                    browser=browser_path,
                     width=options.width,
                     height=options.height,
                 )
@@ -112,7 +110,11 @@ class ThreeDDicePlugin(Star):
         options = build_render_options(self.config)
         try:
             if self.auto_install_chromium and not options.browser:
-                await asyncio.to_thread(ensure_chromium_browser, True)
+                if not await asyncio.to_thread(detect_browser_path):
+                    yield event.plain_result(CHROMIUM_INSTALLING_TEXT)
+                setup_result = await asyncio.to_thread(ensure_chromium_browser, True)
+                if setup_result.installed:
+                    logger.info("3D dice installed Playwright Chromium on demand.")
             result = await asyncio.to_thread(
                 render_dice_gif,
                 dice_type=request.dice_type,
