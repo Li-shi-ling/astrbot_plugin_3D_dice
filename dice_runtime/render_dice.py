@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import math
 import os
+import queue
 import secrets
 import shutil
 import socketserver
@@ -27,7 +29,7 @@ DEFAULT_TIMEOUT_MS = 60000
 DEFAULT_RESULT_TIMEOUT_MS = 8000
 CONFIGURE_TIMEOUT_MS = 5000
 PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
-DEFAULT_CAPTURE_MAX_SIDE = 720
+DEFAULT_CAPTURE_MAX_SIDE = 560
 XVFB_ENV = "ASTRBOT_3D_DICE_USE_XVFB"
 XVFB_ACTIVE_ENV = "ASTRBOT_3D_DICE_XVFB"
 
@@ -36,6 +38,32 @@ _session_lock = threading.Lock()
 _persisted_session: PersistedBrowserSession | None = None
 _render_worker_lock = threading.Lock()
 _render_worker_process: RenderWorkerProcess | None = None
+
+
+def run_sync_renderer(function: Any, *args: Any, **kwargs: Any) -> Any:
+    try:
+        running_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        running_loop = None
+
+    if running_loop is None or not running_loop.is_running():
+        return function(*args, **kwargs)
+
+    result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
+
+    def target() -> None:
+        try:
+            result_queue.put((True, function(*args, **kwargs)))
+        except BaseException as exc:
+            result_queue.put((False, exc))
+
+    thread = threading.Thread(target=target, name="astrbot-3d-dice-sync-render")
+    thread.start()
+    ok, value = result_queue.get()
+    thread.join()
+    if ok:
+        return value
+    raise value
 
 
 class PersistedBrowserSession:
@@ -957,7 +985,7 @@ def get_capture_clip(page: Any) -> dict[str, int]:
             .reduce((bottom, button) => Math.max(bottom, button.getBoundingClientRect().bottom), 0);
 
           const maxSide = Math.max(1, Math.min(window.innerWidth, window.innerHeight, captureMaxSide));
-          const desiredSide = Math.max(rect.width, rect.height, 560);
+          const desiredSide = Math.max(rect.width, rect.height, 520);
           const side = Math.floor(Math.min(maxSide, desiredSide));
           const centeredY = rect.top + (rect.height / 2) - (side / 2);
           const minY = Math.max(0, Math.floor(topControlBottom + 8));
@@ -1740,9 +1768,9 @@ def _render_worker_loop() -> None:
                 action = request.get("action", "render")
                 options = _normalize_render_options(request.get("options", request))
                 if action == "prewarm":
-                    result = _prewarm_render_impl(**options)
+                    result = run_sync_renderer(_prewarm_render_impl, **options)
                 elif action == "render":
-                    result = _render_dice_gif_impl(**options)
+                    result = run_sync_renderer(_render_dice_gif_impl, **options)
                 else:
                     raise ValueError(f"Unsupported render worker action: {action}")
                 response = {"ok": True, "result": result}
