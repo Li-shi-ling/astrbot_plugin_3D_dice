@@ -1,4 +1,4 @@
 pillow
-playwright
-pytest
-git+https://github.com/dolphin-in-a-coma/PyBatchRender.git
+panda3d
+torch
+numpy
