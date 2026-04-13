@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 SUPPORTED_DICE_TYPES = ("D4", "D6", "D8", "D20")
-SUPPORTED_GIF_BACKENDS = ("screenshot", "webm_ffmpeg")
+SUPPORTED_GIF_BACKENDS = ("screenshot", "webm_ffmpeg", "cdp_screencast")
 COMMAND_NAMES = ("3d_dice", "3ddice", "dice3d", "roll3d", "投骰子", "骰子")
 MAX_APP_DICE_COUNT = 6
 DEFAULT_DICE_TYPE = "D6"

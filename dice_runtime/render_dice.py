@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import secrets
 import shutil
@@ -468,7 +469,7 @@ def _render_dice_gif_impl(
         raise FileNotFoundError(
             "Could not find a local Chromium/Chrome/Edge executable. Pass browser=..."
         )
-    if gif_backend not in {"screenshot", "webm_ffmpeg"}:
+    if gif_backend not in {"screenshot", "webm_ffmpeg", "cdp_screencast"}:
         raise ValueError(f"Unsupported GIF backend: {gif_backend}")
 
     frame_delay = max(20, round(1000 / max(1, fps)))
@@ -518,6 +519,21 @@ def _render_dice_gif_impl(
                     )
                 finally:
                     webm_path.unlink(missing_ok=True)
+            elif gif_backend == "cdp_screencast":
+                trigger_roll(page)
+                if better_render_quality:
+                    wait_for_roll_start(page, clip, baseline_frame)
+                else:
+                    wait_for_animation_start(page, clip, baseline_frame, 2000)
+                frames = capture_screencast_frames(
+                    page=page,
+                    clip=clip,
+                    duration=duration,
+                    fps=fps,
+                    width=width,
+                    height=height,
+                )
+                write_gif(frames, output_path, frame_delay)
             else:
                 trigger_roll(page)
                 if better_render_quality:
@@ -925,6 +941,86 @@ def write_gif(
         loop=0,
         disposal=2,
     )
+
+
+def capture_screencast_frames(
+    page: Any,
+    clip: dict[str, int],
+    duration: int,
+    fps: int,
+    width: int,
+    height: int,
+) -> list[Image.Image]:
+    client = page.context.new_cdp_session(page)
+    encoded_frames: list[str] = []
+
+    def handle_frame(event: dict[str, Any]) -> None:
+        data = event.get("data")
+        if data:
+            encoded_frames.append(str(data))
+        session_id = event.get("sessionId")
+        if session_id is not None:
+            client.send("Page.screencastFrameAck", {"sessionId": session_id})
+
+    client.on("Page.screencastFrame", handle_frame)
+    client.send(
+        "Page.startScreencast",
+        {
+            "format": "jpeg",
+            "quality": 85,
+            "maxWidth": int(width),
+            "maxHeight": int(height),
+            "everyNthFrame": 1,
+        },
+    )
+    try:
+        page.wait_for_timeout(max(100, int(duration)))
+    finally:
+        try:
+            client.send("Page.stopScreencast")
+        finally:
+            client.detach()
+
+    if not encoded_frames:
+        raise RuntimeError("CDP screencast returned no frames")
+
+    target_count = max(1, math.ceil(duration / max(20, round(1000 / max(1, fps)))))
+    selected_frames = sample_evenly(encoded_frames, target_count)
+    viewport = {"width": int(width), "height": int(height)}
+    return [
+        crop_screencast_frame(
+            decode_screencast_frame(encoded_frame), clip=clip, viewport=viewport
+        )
+        for encoded_frame in selected_frames
+    ]
+
+
+def sample_evenly(items: list[str], target_count: int) -> list[str]:
+    if len(items) <= target_count:
+        return items
+    if target_count <= 1:
+        return [items[0]]
+    step = (len(items) - 1) / (target_count - 1)
+    return [items[round(index * step)] for index in range(target_count)]
+
+
+def decode_screencast_frame(encoded_frame: str) -> Image.Image:
+    frame_bytes = base64.b64decode(encoded_frame)
+    return Image.open(BytesIO(frame_bytes)).convert("RGBA")
+
+
+def crop_screencast_frame(
+    image: Image.Image, clip: dict[str, int], viewport: dict[str, int]
+) -> Image.Image:
+    scale_x = image.width / max(1, int(viewport["width"]))
+    scale_y = image.height / max(1, int(viewport["height"]))
+    left = max(0, int(round(clip["x"] * scale_x)))
+    top = max(0, int(round(clip["y"] * scale_y)))
+    right = min(image.width, int(round((clip["x"] + clip["width"]) * scale_x)))
+    bottom = min(image.height, int(round((clip["y"] + clip["height"]) * scale_y)))
+    if right <= left or bottom <= top:
+        return image
+    return image.crop((left, top, right, bottom))
 
 
 def find_ffmpeg_path(explicit_path: str | None = None) -> str | None:

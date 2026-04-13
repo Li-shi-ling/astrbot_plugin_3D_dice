@@ -37,8 +37,8 @@
     "description": "GIF 生成方式",
     "type": "string",
     "default": "screenshot",
-    "options": ["screenshot", "webm_ffmpeg"],
-    "hint": "screenshot 为逐帧截图方案；webm_ffmpeg 会先录制 WebM，再用 ffmpeg 转换为 GIF"
+    "options": ["screenshot", "webm_ffmpeg", "cdp_screencast"],
+    "hint": "screenshot 为逐帧截图方案；webm_ffmpeg 会先录制 WebM，再用 ffmpeg 转换为 GIF；cdp_screencast 使用 Chromium DevTools 录屏帧生成 GIF"
   },
   "ffmpeg_path": {
     "description": "ffmpeg 可执行文件路径",
