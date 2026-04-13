@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 SUPPORTED_DICE_TYPES = ("D4", "D6", "D8", "D20")
+SUPPORTED_GIF_BACKENDS = ("screenshot", "webm_ffmpeg")
 COMMAND_NAMES = ("3d_dice", "3ddice", "dice3d", "roll3d", "投骰子", "骰子")
 MAX_APP_DICE_COUNT = 6
 DEFAULT_DICE_TYPE = "D6"
@@ -34,6 +35,8 @@ class DiceRenderOptions:
     duration: int
     fps: int
     browser: str | None
+    gif_backend: str
+    ffmpeg_path: str | None
     better_render_quality: bool
     width: int
     height: int
@@ -58,6 +61,14 @@ def normalize_dice_count(value: Any, max_count: int = MAX_APP_DICE_COUNT) -> int
     if count < 1 or count > effective_max:
         raise ValueError(f"Dice count must be between 1 and {effective_max}.")
     return count
+
+
+def normalize_gif_backend(value: Any) -> str:
+    backend = str(value or "screenshot").strip().lower()
+    if backend not in SUPPORTED_GIF_BACKENDS:
+        supported = ", ".join(SUPPORTED_GIF_BACKENDS)
+        raise ValueError(f"Unsupported GIF backend: {value}. Supported: {supported}.")
+    return backend
 
 
 def parse_roll_request(
@@ -126,6 +137,8 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         ),
         "fps": _int_in_range(config.get("fps", DEFAULT_FPS), 4, 30),
         "browser": _optional_path_string(config.get("browser")),
+        "gif_backend": normalize_gif_backend(config.get("gif_backend", "screenshot")),
+        "ffmpeg_path": _optional_path_string(config.get("ffmpeg_path")),
         "auto_install_chromium": _bool_value(config.get("auto_install_chromium", True)),
         "better_render_quality": _bool_value(config.get("better_render_quality", True)),
         "width": _int_in_range(config.get("width", DEFAULT_WIDTH), 320, 1920),
@@ -140,6 +153,8 @@ def build_render_options(config: dict[str, Any] | None = None) -> DiceRenderOpti
         duration=normalized["duration"],
         fps=normalized["fps"],
         browser=normalized["browser"],
+        gif_backend=normalized["gif_backend"],
+        ffmpeg_path=normalized["ffmpeg_path"],
         better_render_quality=normalized["better_render_quality"],
         width=normalized["width"],
         height=normalized["height"],

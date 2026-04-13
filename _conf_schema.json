@@ -33,6 +33,19 @@
     "default": "",
     "hint": "留空时自动检测系统浏览器或 Playwright Chromium"
   },
+  "gif_backend": {
+    "description": "GIF 生成方式",
+    "type": "string",
+    "default": "screenshot",
+    "options": ["screenshot", "webm_ffmpeg"],
+    "hint": "screenshot 为逐帧截图方案；webm_ffmpeg 会先录制 WebM，再用 ffmpeg 转换为 GIF"
+  },
+  "ffmpeg_path": {
+    "description": "ffmpeg 可执行文件路径",
+    "type": "string",
+    "default": "",
+    "hint": "使用 webm_ffmpeg 时需要；留空时从 PATH 或 FFMPEG_BINARY 环境变量查找"
+  },
   "auto_install_chromium": {
     "description": "找不到浏览器时是否自动安装 Playwright Chromium",
     "type": "bool",

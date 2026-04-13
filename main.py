@@ -108,6 +108,8 @@ class ThreeDDicePlugin(Star):
                 output_dir=self.render_output_dir,
                 width=options.width,
                 height=options.height,
+                gif_backend=options.gif_backend,
+                ffmpeg_path=options.ffmpeg_path,
                 better_render_quality=options.better_render_quality,
                 parallel_result=options.parallel_result,
             )

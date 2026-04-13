@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import secrets
+import shutil
 import socketserver
 import subprocess
 import sys
@@ -232,6 +234,8 @@ def render_dice_gif(
     site_dir: Path | None = None,
     width: int = 900,
     height: int = 1400,
+    gif_backend: str = "screenshot",
+    ffmpeg_path: str | None = None,
     better_render_quality: bool = True,
     parallel_result: bool = False,
 ) -> dict[str, Any]:
@@ -246,6 +250,8 @@ def render_dice_gif(
         site_dir=site_dir,
         width=width,
         height=height,
+        gif_backend=gif_backend,
+        ffmpeg_path=ffmpeg_path,
         better_render_quality=better_render_quality,
         parallel_result=parallel_result,
     )
@@ -293,6 +299,8 @@ def _render_dice_gif_impl(
     site_dir: Path | None = None,
     width: int = 900,
     height: int = 1400,
+    gif_backend: str = "screenshot",
+    ffmpeg_path: str | None = None,
     better_render_quality: bool = True,
     parallel_result: bool = False,
 ) -> dict[str, Any]:
@@ -308,6 +316,7 @@ def _render_dice_gif_impl(
     output_path = output_dir / (output_name or default_output_name(dice_type, count))
     browser_path = browser or detect_browser_path()
     timeout_ms = DEFAULT_TIMEOUT_MS
+    gif_backend = str(gif_backend or "screenshot").strip().lower()
 
     if not site_dir.exists():
         raise FileNotFoundError(f"Site directory not found: {site_dir}")
@@ -315,6 +324,8 @@ def _render_dice_gif_impl(
         raise FileNotFoundError(
             "Could not find a local Chromium/Chrome/Edge executable. Pass browser=..."
         )
+    if gif_backend not in {"screenshot", "webm_ffmpeg"}:
+        raise ValueError(f"Unsupported GIF backend: {gif_backend}")
 
     frame_delay = max(20, round(1000 / max(1, fps)))
     total_frames = max(1, -(-duration // frame_delay))
@@ -335,13 +346,42 @@ def _render_dice_gif_impl(
             if better_render_quality:
                 wait_for_stable_render(page, clip)
             baseline_frame = capture_clip_png(page, clip)
-            trigger_roll(page)
-            if better_render_quality:
-                wait_for_roll_start(page, clip, baseline_frame)
+
+            if gif_backend == "webm_ffmpeg":
+                resolved_ffmpeg = find_ffmpeg_path(ffmpeg_path)
+                if not resolved_ffmpeg:
+                    raise FileNotFoundError(
+                        "ffmpeg was not found. Set ffmpeg_path or add ffmpeg to PATH."
+                    )
+                recording_duration = max(duration, 1200)
+                start_webm_recording(
+                    page, clip=clip, fps=fps, duration=recording_duration
+                )
+                trigger_roll(page)
+                if better_render_quality:
+                    wait_for_roll_start(page, clip, baseline_frame)
+                else:
+                    wait_for_animation_start(page, clip, baseline_frame, 2000)
+                webm_data = finish_webm_recording(page)
+                webm_path = output_path.with_suffix(".webm")
+                write_webm_file(webm_data, webm_path)
+                try:
+                    convert_webm_to_gif(
+                        webm_path=webm_path,
+                        output_path=output_path,
+                        fps=fps,
+                        ffmpeg_path=resolved_ffmpeg,
+                    )
+                finally:
+                    webm_path.unlink(missing_ok=True)
             else:
-                wait_for_animation_start(page, clip, baseline_frame, 2000)
-            frames = capture_frames(page, clip, total_frames, frame_delay)
-            write_gif(frames, output_path, frame_delay)
+                trigger_roll(page)
+                if better_render_quality:
+                    wait_for_roll_start(page, clip, baseline_frame)
+                else:
+                    wait_for_animation_start(page, clip, baseline_frame, 2000)
+                frames = capture_frames(page, clip, total_frames, frame_delay)
+                write_gif(frames, output_path, frame_delay)
 
             if parallel_result:
                 result = read_roll_results(page, count, dice_type)
@@ -360,6 +400,7 @@ def _render_dice_gif_impl(
         "total": result["total"],
         "dice_type": dice_type,
         "dice_count": count,
+        "gif_backend": gif_backend,
         "fallback": bool(result.get("fallback", False)),
         "partial": bool(result.get("partial", False)),
     }
@@ -739,6 +780,196 @@ def write_gif(
         duration=frame_delay_ms,
         loop=0,
         disposal=2,
+    )
+
+
+def find_ffmpeg_path(explicit_path: str | None = None) -> str | None:
+    if explicit_path:
+        candidate = Path(explicit_path)
+        if candidate.exists():
+            return str(candidate)
+        return explicit_path if shutil.which(explicit_path) else None
+    return shutil.which(os.environ.get("FFMPEG_BINARY", "ffmpeg"))
+
+
+def start_webm_recording(
+    page: Any, clip: dict[str, int], fps: int, duration: int
+) -> None:
+    page.evaluate(
+        """
+        ({ clip, fps, duration }) => {
+          const canvas = [...document.querySelectorAll('canvas')]
+            .find((item) => {
+              const rect = item.getBoundingClientRect();
+              return rect.width > 100 && rect.height > 100;
+            });
+          if (!canvas) {
+            throw new Error('Dice canvas not found');
+          }
+          if (typeof canvas.captureStream !== 'function') {
+            throw new Error('Canvas captureStream is not supported');
+          }
+          if (typeof MediaRecorder === 'undefined') {
+            throw new Error('MediaRecorder is not supported');
+          }
+
+          const stream = canvas.captureStream(fps);
+          const videoTrack = stream.getVideoTracks()[0];
+          const mimeTypes = [
+            'video/webm;codecs=vp8',
+            'video/webm',
+            'video/webm;codecs=vp9',
+          ];
+          const mimeType = mimeTypes.find((item) => MediaRecorder.isTypeSupported(item));
+          const recorder = new MediaRecorder(
+            stream,
+            mimeType ? { mimeType } : undefined,
+          );
+          const chunks = [];
+          let frameTimer = null;
+
+          globalThis.__astrbotWebmPromise = new Promise((resolve, reject) => {
+            recorder.ondataavailable = (event) => {
+              if (event.data && event.data.size > 0) {
+                chunks.push(event.data);
+              }
+            };
+            recorder.onerror = (event) => {
+              reject(new Error(event.error?.message || 'WebM recording failed'));
+            };
+            recorder.onstop = async () => {
+              try {
+                if (frameTimer !== null) {
+                  clearInterval(frameTimer);
+                }
+                stream.getTracks().forEach((track) => track.stop());
+                const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+                const buffer = await blob.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                const chunkSize = 0x8000;
+                for (let index = 0; index < bytes.length; index += chunkSize) {
+                  binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+                }
+                resolve({
+                  base64: btoa(binary),
+                  byteLength: bytes.length,
+                  mimeType: blob.type,
+                  width: canvas.width,
+                  height: canvas.height,
+                });
+              } catch (error) {
+                reject(error);
+              }
+            };
+          });
+
+          recorder.start(100);
+          if (videoTrack && typeof videoTrack.requestFrame === 'function') {
+            frameTimer = setInterval(
+              () => videoTrack.requestFrame(),
+              Math.max(20, Math.round(1000 / Math.max(1, fps))),
+            );
+            videoTrack.requestFrame();
+          }
+          setTimeout(() => {
+            if (recorder.state !== 'inactive') {
+              if (typeof recorder.requestData === 'function') {
+                recorder.requestData();
+              }
+              recorder.stop();
+            }
+          }, Math.max(100, duration));
+        }
+        """,
+        {"clip": clip, "fps": int(fps), "duration": int(duration)},
+    )
+
+
+def finish_webm_recording(page: Any) -> dict[str, Any]:
+    data = page.evaluate(
+        """
+        () => {
+          if (!globalThis.__astrbotWebmPromise) {
+            throw new Error('WebM recording was not started');
+          }
+          return globalThis.__astrbotWebmPromise;
+        }
+        """
+    )
+    if not data or not data.get("base64"):
+        raise RuntimeError("WebM recording returned no data")
+    return data
+
+
+def write_webm_file(webm_data: dict[str, Any], webm_path: Path) -> None:
+    content = base64.b64decode(str(webm_data["base64"]))
+    if not content:
+        raise RuntimeError("WebM recording was empty")
+    webm_path.write_bytes(content)
+
+
+def convert_webm_to_gif(
+    webm_path: Path,
+    output_path: Path,
+    fps: int,
+    ffmpeg_path: str,
+) -> None:
+    palette_filter = (
+        f"fps={max(1, int(fps))},"
+        "split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse=dither=bayer"
+    )
+    completed = run_ffmpeg(
+        command=[
+            ffmpeg_path,
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(webm_path),
+            "-filter_complex",
+            palette_filter,
+            "-loop",
+            "0",
+            str(output_path),
+        ],
+    )
+    if completed.returncode != 0 and "palettegen" in (
+        completed.stdout + completed.stderr
+    ):
+        completed = run_ffmpeg(
+            command=[
+                ffmpeg_path,
+                "-y",
+                "-loglevel",
+                "error",
+                "-i",
+                str(webm_path),
+                "-vf",
+                f"fps={max(1, int(fps))}",
+                "-loop",
+                "0",
+                str(output_path),
+            ],
+        )
+    if completed.returncode != 0:
+        output = "\n".join(
+            part.strip()
+            for part in (completed.stdout, completed.stderr)
+            if part and part.strip()
+        )
+        raise RuntimeError(f"ffmpeg failed to convert WebM to GIF: {output}")
+    if not output_path.exists() or output_path.stat().st_size <= 0:
+        raise RuntimeError("ffmpeg did not create a GIF output")
+
+
+def run_ffmpeg(command: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=120,
     )
 
 
