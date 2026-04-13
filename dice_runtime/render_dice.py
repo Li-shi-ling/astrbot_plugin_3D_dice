@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 import math
 import os
-import queue
 import secrets
 import shutil
 import socketserver
@@ -28,63 +26,13 @@ PROJECT_DIR = RUNTIME_DIR.parent
 DEFAULT_TIMEOUT_MS = 60000
 DEFAULT_RESULT_TIMEOUT_MS = 8000
 CONFIGURE_TIMEOUT_MS = 5000
-DICE_UI_READY_TIMEOUT_MS = 15000
 PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
-CHROMIUM_LAUNCH_ARGS = (
-    "--allow-file-access-from-files",
-    "--autoplay-policy=no-user-gesture-required",
-    "--disable-background-timer-throttling",
-    "--disable-dev-shm-usage",
-    "--disable-renderer-backgrounding",
-    "--enable-unsafe-swiftshader",
-    "--enable-webgl",
-    "--enable-webgl2",
-    "--ignore-gpu-blocklist",
-    "--mute-audio",
-    "--no-sandbox",
-    "--use-angle=swiftshader",
-    "--use-gl=angle",
-)
 
 # A single persistent browser/page is reused between render requests.
 _session_lock = threading.Lock()
 _persisted_session: PersistedBrowserSession | None = None
 _render_worker_lock = threading.Lock()
 _render_worker_process: RenderWorkerProcess | None = None
-
-
-def run_sync_playwright_safe(function: Any, *args: Any, **kwargs: Any) -> Any:
-    """Run sync Playwright code away from any active asyncio event loop."""
-    try:
-        running_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        running_loop = None
-
-    if running_loop is None or not running_loop.is_running():
-        return function(*args, **kwargs)
-
-    result_queue: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
-
-    def target() -> None:
-        try:
-            result_queue.put((True, function(*args, **kwargs)))
-        except BaseException as exc:
-            result_queue.put((False, exc))
-
-    thread = threading.Thread(target=target, name="astrbot-3d-dice-sync-render")
-    thread.start()
-    ok, value = result_queue.get()
-    thread.join()
-    if ok:
-        return value
-    raise value
-
-
-def chromium_launch_args(extra_args: list[str] | None = None) -> list[str]:
-    args = list(CHROMIUM_LAUNCH_ARGS)
-    if extra_args:
-        args.extend(extra_args)
-    return args
 
 
 class PersistedBrowserSession:
@@ -110,7 +58,6 @@ class PersistedBrowserSession:
         self._page: Any = None
         self._server: StaticServer | None = None
         self._clip: dict[str, int] | None = None
-        self._browser_events: list[dict[str, str]] = []
         self._ready = False
         self.render_lock = threading.Lock()
 
@@ -125,13 +72,20 @@ class PersistedBrowserSession:
             executable_path=self.browser_path,
             headless=True,
             timeout=self.timeout_ms,
-            args=chromium_launch_args(),
+            args=[
+                "--allow-file-access-from-files",
+                "--autoplay-policy=no-user-gesture-required",
+                "--disable-background-timer-throttling",
+                "--disable-dev-shm-usage",
+                "--disable-renderer-backgrounding",
+                "--mute-audio",
+            ],
         )
         self._context = self._browser.new_context(
             viewport={"width": self.width, "height": self.height},
             device_scale_factor=1,
         )
-        self._page = self._new_page()
+        self._page = self._context.new_page()
         self._page.set_default_timeout(self.timeout_ms)
         self._page.set_default_navigation_timeout(self.timeout_ms)
         self._page.goto(
@@ -146,44 +100,10 @@ class PersistedBrowserSession:
         if not self._ready or self._page is None:
             return False
         try:
-            return is_dice_ui_ready(self._page)
+            self._page.evaluate("() => true")
+            return True
         except Exception:
             return False
-
-    def reload_page(self) -> tuple[Any, dict[str, int]]:
-        if self._page is None:
-            raise RuntimeError("Persisted browser page is not available")
-        self._page.reload(wait_until="domcontentloaded", timeout=self.timeout_ms)
-        wait_for_dice_app(self._page)
-        self._clip = get_capture_clip(self._page)
-        return self._page, self._clip
-
-    def reset_page(self) -> tuple[Any, dict[str, int]]:
-        if self._context is None or self._server is None:
-            raise RuntimeError("Persisted browser context is not available")
-        if self._page is not None:
-            try:
-                self._page.close()
-            except Exception:
-                pass
-        base_url = f"http://127.0.0.1:{self._server.port}/index.html"
-        self._page = self._new_page()
-        self._page.set_default_timeout(self.timeout_ms)
-        self._page.set_default_navigation_timeout(self.timeout_ms)
-        self._page.goto(
-            base_url, wait_until="domcontentloaded", timeout=self.timeout_ms
-        )
-        wait_for_dice_app(self._page)
-        self._clip = get_capture_clip(self._page)
-        self._ready = True
-        return self._page, self._clip
-
-    def _new_page(self) -> Any:
-        if self._context is None:
-            raise RuntimeError("Persisted browser context is not available")
-        page = self._context.new_page()
-        attach_browser_diagnostics(page, self._browser_events)
-        return page
 
     def matches(
         self,
@@ -204,11 +124,6 @@ class PersistedBrowserSession:
 
     def get_page_and_clip(self) -> tuple[Any, dict[str, int]]:
         return self._page, self._clip  # type: ignore[return-value]
-
-    def read_ui_snapshot(self) -> dict[str, Any]:
-        if self._page is None:
-            return {"error": "Persisted browser page is not available"}
-        return read_dice_ui_snapshot(self._page, self._browser_events)
 
     def close(self) -> None:
         self._ready = False
@@ -593,28 +508,7 @@ def _render_dice_gif_impl(
         page, clip = session.get_page_and_clip()
 
         try:
-            try:
-                configure_dice(page, dice_type=dice_type, dice_count=count)
-            except Exception as first_exc:
-                before_reload = session.read_ui_snapshot()
-                try:
-                    page, clip = session.reload_page()
-                    configure_dice(page, dice_type=dice_type, dice_count=count)
-                except Exception as reload_exc:
-                    before_reset = session.read_ui_snapshot()
-                    try:
-                        page, clip = session.reset_page()
-                        configure_dice(page, dice_type=dice_type, dice_count=count)
-                    except Exception as reset_exc:
-                        after_reset = session.read_ui_snapshot()
-                        raise RuntimeError(
-                            "Could not configure dice UI after reload and page reset. "
-                            f"first_error={first_exc}; reload_error={reload_exc}; "
-                            f"reset_error={reset_exc}; "
-                            f"before_reload={format_dice_ui_snapshot(before_reload)}; "
-                            f"before_reset={format_dice_ui_snapshot(before_reset)}; "
-                            f"after_reset={format_dice_ui_snapshot(after_reset)}"
-                        ) from reset_exc
+            configure_dice(page, dice_type=dice_type, dice_count=count)
             if better_render_quality:
                 wait_for_stable_render(page, clip)
             baseline_frame = capture_clip_png(page, clip)
@@ -806,164 +700,17 @@ def install_playwright_chromium() -> None:
     )
 
 
-def attach_browser_diagnostics(
-    page: Any, events: list[dict[str, str]], limit: int = 80
-) -> None:
-    def append_event(event: dict[str, str]) -> None:
-        events.append(event)
-        del events[:-limit]
-
-    def on_console(message: Any) -> None:
-        try:
-            text = message.text
-        except Exception:
-            text = str(message)
-        try:
-            message_type = message.type
-        except Exception:
-            message_type = "console"
-        try:
-            location = message.location
-        except Exception:
-            location = {}
-        append_event(
-            {
-                "type": f"console:{message_type}",
-                "text": str(text),
-                "url": str(location.get("url") or ""),
-                "line": str(location.get("lineNumber") or ""),
-                "column": str(location.get("columnNumber") or ""),
-            }
-        )
-
-    def on_page_error(error: Any) -> None:
-        append_event({"type": "pageerror", "text": str(error)})
-
-    page.on("console", on_console)
-    page.on("pageerror", on_page_error)
-
-
-def read_dice_ui_snapshot(
-    page: Any, browser_events: list[dict[str, str]] | None = None
-) -> dict[str, Any]:
-    """Return a compact browser-side snapshot for readiness diagnostics."""
-    try:
-        snapshot = page.evaluate(
-            """
-            () => {
-              const clean = (value) => (value || '').replace(/\\s+/g, ' ').trim();
-              const buttons = [...document.querySelectorAll('button')].map((button) => clean(button.textContent));
-              const headings = [...document.querySelectorAll('h1, h2')].map((node) => clean(node.textContent));
-              const canvases = [...document.querySelectorAll('canvas')].map((canvas) => {
-                const rect = canvas.getBoundingClientRect();
-                let webglReady = false;
-                try {
-                  const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-                  webglReady = Boolean(gl && gl.drawingBufferWidth > 0 && gl.drawingBufferHeight > 0);
-                } catch {
-                  webglReady = false;
-                }
-                return {
-                  width: Math.round(rect.width),
-                  height: Math.round(rect.height),
-                  bufferWidth: canvas.width,
-                  bufferHeight: canvas.height,
-                  webglReady,
-                };
-              });
-              let webglProbe = { ok: false, renderer: '', vendor: '', error: '' };
-              try {
-                const probeCanvas = document.createElement('canvas');
-                const gl = probeCanvas.getContext('webgl2') || probeCanvas.getContext('webgl');
-                if (gl) {
-                  const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                  webglProbe = {
-                    ok: true,
-                    renderer: debugInfo ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)) : '',
-                    vendor: debugInfo ? String(gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)) : '',
-                    error: '',
-                  };
-                }
-              } catch (error) {
-                webglProbe = { ok: false, renderer: '', vendor: '', error: String(error) };
-              }
-              const dieButtons = buttons.filter((text) => /^D\\d+$/i.test(text));
-              const rollButtons = buttons.filter((text) => /roll/i.test(text));
-              const countHeadings = headings.filter((text) => /^\\d+\\s+(Die|Dice)$/i.test(text));
-              return {
-                url: location.href,
-                title: document.title,
-                readyState: document.readyState,
-                buttonCount: buttons.length,
-                buttons: buttons.slice(0, 24),
-                dieButtons,
-                rollButtonCount: rollButtons.length,
-                headings: headings.slice(0, 12),
-                countHeadings,
-                canvasCount: canvases.length,
-                canvases,
-                webglProbe,
-                uiReady: dieButtons.length > 0 && rollButtons.length > 0 && countHeadings.length > 0,
-              };
-            }
-            """
-        )
-        snapshot["browserEvents"] = list(browser_events or [])[-20:]
-        return snapshot
-    except Exception as exc:
-        return {"error": str(exc), "browserEvents": list(browser_events or [])[-20:]}
-
-
-def format_dice_ui_snapshot(snapshot: dict[str, Any]) -> str:
-    return json.dumps(snapshot, ensure_ascii=False, sort_keys=True)
-
-
-def is_dice_ui_ready(page: Any) -> bool:
-    return bool(
-        page.evaluate(
-            """
-            () => {
-              const clean = (value) => (value || '').replace(/\\s+/g, ' ').trim();
-              const buttons = [...document.querySelectorAll('button')].map((button) => clean(button.textContent));
-              const headings = [...document.querySelectorAll('h1, h2')].map((node) => clean(node.textContent));
-              const canvas = document.querySelector('canvas');
-              return Boolean(
-                canvas &&
-                buttons.some((text) => /^D\\d+$/i.test(text)) &&
-                buttons.some((text) => /roll/i.test(text)) &&
-                headings.some((text) => /^\\d+\\s+(Die|Dice)$/i.test(text))
-              );
-            }
-            """
-        )
-    )
-
-
-def wait_for_dice_controls(
-    page: Any, timeout_ms: int = DICE_UI_READY_TIMEOUT_MS
-) -> None:
+def wait_for_dice_app(page: Any) -> None:
+    """Wait until the dice app has mounted and WebGL is ready."""
     page.wait_for_function(
         """
         () => {
-          const clean = (value) => (value || '').replace(/\\s+/g, ' ').trim();
-          const buttons = [...document.querySelectorAll('button')].map((button) => clean(button.textContent));
-          const headings = [...document.querySelectorAll('h1, h2')].map((node) => clean(node.textContent));
           const canvas = document.querySelector('canvas');
-          return Boolean(
-            canvas &&
-            buttons.some((text) => /^D\\d+$/i.test(text)) &&
-            buttons.some((text) => /roll/i.test(text)) &&
-            headings.some((text) => /^\\d+\\s+(Die|Dice)$/i.test(text))
-          );
+          const buttons = [...document.querySelectorAll('button')];
+          return Boolean(canvas && buttons.some((button) => /roll/i.test(button.textContent || '')));
         }
-        """,
-        timeout=timeout_ms,
+        """
     )
-
-
-def wait_for_dice_app(page: Any) -> None:
-    """Wait until the dice app has mounted, hydrated, and WebGL is ready."""
-    wait_for_dice_controls(page)
     page.wait_for_selector("canvas")
     page.wait_for_function(
         """
@@ -1014,7 +761,6 @@ def wait_for_roll_start(
 
 
 def configure_dice(page: Any, dice_type: str, dice_count: int) -> None:
-    wait_for_dice_controls(page, timeout_ms=CONFIGURE_TIMEOUT_MS)
     page.evaluate(
         """
         (label) => {
@@ -1897,9 +1643,9 @@ def _render_worker_loop() -> None:
                 action = request.get("action", "render")
                 options = _normalize_render_options(request.get("options", request))
                 if action == "prewarm":
-                    result = run_sync_playwright_safe(_prewarm_render_impl, **options)
+                    result = _prewarm_render_impl(**options)
                 elif action == "render":
-                    result = run_sync_playwright_safe(_render_dice_gif_impl, **options)
+                    result = _render_dice_gif_impl(**options)
                 else:
                     raise ValueError(f"Unsupported render worker action: {action}")
                 response = {"ok": True, "result": result}
