@@ -30,6 +30,21 @@ DEFAULT_RESULT_TIMEOUT_MS = 8000
 CONFIGURE_TIMEOUT_MS = 5000
 DICE_UI_READY_TIMEOUT_MS = 15000
 PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
+CHROMIUM_LAUNCH_ARGS = (
+    "--allow-file-access-from-files",
+    "--autoplay-policy=no-user-gesture-required",
+    "--disable-background-timer-throttling",
+    "--disable-dev-shm-usage",
+    "--disable-renderer-backgrounding",
+    "--enable-unsafe-swiftshader",
+    "--enable-webgl",
+    "--enable-webgl2",
+    "--ignore-gpu-blocklist",
+    "--mute-audio",
+    "--no-sandbox",
+    "--use-angle=swiftshader",
+    "--use-gl=angle",
+)
 
 # A single persistent browser/page is reused between render requests.
 _session_lock = threading.Lock()
@@ -63,6 +78,13 @@ def run_sync_playwright_safe(function: Any, *args: Any, **kwargs: Any) -> Any:
     if ok:
         return value
     raise value
+
+
+def chromium_launch_args(extra_args: list[str] | None = None) -> list[str]:
+    args = list(CHROMIUM_LAUNCH_ARGS)
+    if extra_args:
+        args.extend(extra_args)
+    return args
 
 
 class PersistedBrowserSession:
@@ -103,16 +125,7 @@ class PersistedBrowserSession:
             executable_path=self.browser_path,
             headless=True,
             timeout=self.timeout_ms,
-            args=[
-                "--allow-file-access-from-files",
-                "--autoplay-policy=no-user-gesture-required",
-                "--disable-background-timer-throttling",
-                "--disable-dev-shm-usage",
-                "--disable-renderer-backgrounding",
-                "--enable-unsafe-swiftshader",
-                "--mute-audio",
-                "--no-sandbox",
-            ],
+            args=chromium_launch_args(),
         )
         self._context = self._browser.new_context(
             viewport={"width": self.width, "height": self.height},
@@ -858,6 +871,22 @@ def read_dice_ui_snapshot(
                   webglReady,
                 };
               });
+              let webglProbe = { ok: false, renderer: '', vendor: '', error: '' };
+              try {
+                const probeCanvas = document.createElement('canvas');
+                const gl = probeCanvas.getContext('webgl2') || probeCanvas.getContext('webgl');
+                if (gl) {
+                  const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                  webglProbe = {
+                    ok: true,
+                    renderer: debugInfo ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)) : '',
+                    vendor: debugInfo ? String(gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)) : '',
+                    error: '',
+                  };
+                }
+              } catch (error) {
+                webglProbe = { ok: false, renderer: '', vendor: '', error: String(error) };
+              }
               const dieButtons = buttons.filter((text) => /^D\\d+$/i.test(text));
               const rollButtons = buttons.filter((text) => /roll/i.test(text));
               const countHeadings = headings.filter((text) => /^\\d+\\s+(Die|Dice)$/i.test(text));
@@ -873,6 +902,7 @@ def read_dice_ui_snapshot(
                 countHeadings,
                 canvasCount: canvases.length,
                 canvases,
+                webglProbe,
                 uiReady: dieButtons.length > 0 && rollButtons.length > 0 && countHeadings.length > 0,
               };
             }
