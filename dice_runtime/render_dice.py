@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import traceback
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import partial
 from http.server import SimpleHTTPRequestHandler
@@ -102,7 +103,7 @@ class PersistedBrowserSession:
 
         self._browser = self._playwright_ctx.chromium.launch(
             executable_path=self.browser_path,
-            headless=not bool(os.environ.get("DISPLAY")),
+            headless=not is_display_available(),
             timeout=self.timeout_ms,
             args=[
                 "--allow-file-access-from-files",
@@ -426,7 +427,7 @@ def build_render_worker_command() -> tuple[list[str], dict[str, str]]:
         return command, env
     if env.get(XVFB_ACTIVE_ENV) or not is_xvfb_supported_platform():
         return command, env
-    if env.get("DISPLAY") and xvfb_mode != "true":
+    if is_display_available(env) and xvfb_mode != "true":
         return command, env
 
     xvfb_run = shutil.which("xvfb-run")
@@ -441,6 +442,38 @@ def build_render_worker_command() -> tuple[list[str], dict[str, str]]:
 
 def is_xvfb_supported_platform() -> bool:
     return os.name != "nt" and sys.platform != "darwin"
+
+
+def _parse_display_number(display: str) -> int | None:
+    display = display.strip()
+    if not display:
+        return None
+    if ":" in display:
+        display = display.split(":")[-1]
+    if "." in display:
+        display = display.split(".")[0]
+    try:
+        return int(display)
+    except ValueError:
+        return None
+
+
+def _is_display_available(env: Mapping[str, str], x11_dir: Path) -> bool:
+    display = env.get("DISPLAY", "").strip()
+    if not display:
+        return False
+    if os.name == "nt":
+        return True
+    if not x11_dir.exists():
+        return False
+    display_number = _parse_display_number(display)
+    if display_number is not None:
+        return (x11_dir / f"X{display_number}").exists()
+    return any(child.name.startswith("X") for child in x11_dir.iterdir())
+
+
+def is_display_available(env: Mapping[str, str] | None = None) -> bool:
+    return _is_display_available(env or os.environ, Path("/tmp/.X11-unix"))
 
 
 def read_worker_json_response(stdout: Any) -> dict[str, Any]:
