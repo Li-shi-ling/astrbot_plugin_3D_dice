@@ -15,7 +15,7 @@ QUIET_LINEAR_SPEED = 0.12
 QUIET_ANGULAR_SPEED = 0.25
 QUIET_HOLD_SECONDS = 0.25
 POST_SETTLE_HOLD_SECONDS = 0.35
-FINAL_FACE_HOLD_SECONDS = 0.75
+FINAL_FACE_TRANSITION_SECONDS = 0.50
 TABLE_HALF_EXTENTS = [24.0, 16.0, 0.08]
 TABLE_TOP_Z = 0.0
 THROW_START_X = -5.7
@@ -32,6 +32,7 @@ def simulate_roll(
     seed: int,
     duration_ms: int,
     fps: int,
+    final_hold_ms: int = 3500,
 ) -> SimulationResult:
     p = _load_pybullet()
     rng = random.Random(seed)
@@ -133,8 +134,12 @@ def simulate_roll(
         raw_final_poses = tuple(_pose_for_body(p, client, body) for body in bodies)
         final_poses = tuple(_face_rest_pose(mesh, pose) for pose in raw_final_poses)
         if settled:
-            frames = _replace_final_hold_frames(
-                frames, final_poses, fps, settle_time
+            frames = _append_final_hold_frames(
+                frames,
+                final_poses,
+                fps,
+                settle_time,
+                max(0.0, final_hold_ms / 1000.0),
             )
         linear_speeds, angular_speeds = _speeds_for_bodies(p, client, bodies)
         return SimulationResult(
@@ -423,25 +428,97 @@ def _face_rest_pose(mesh: MeshData, pose: BodyPose) -> BodyPose:
     )
 
 
-def _replace_final_hold_frames(
+def _append_final_hold_frames(
     frames: list[SimulationFrame],
     final_poses: tuple[BodyPose, ...],
     fps: int,
     settle_time: float | None,
+    final_hold_seconds: float,
 ) -> list[SimulationFrame]:
     if not frames:
         return frames
-    hold_frames = max(2, int(round(FINAL_FACE_HOLD_SECONDS * max(1, fps))))
-    start = max(0, len(frames) - hold_frames)
+    frame_rate = max(1, fps)
+    start = len(frames) - 1
     if settle_time is not None:
         for index, frame in enumerate(frames):
             if frame.time_seconds >= settle_time:
-                start = min(start, index)
+                start = index
                 break
-    return [
-        frame if index < start else SimulationFrame(frame.time_seconds, final_poses)
-        for index, frame in enumerate(frames)
-    ]
+
+    output = frames[: start + 1]
+    source_frame = output[-1]
+    transition_frames = max(
+        1, int(round(FINAL_FACE_TRANSITION_SECONDS * frame_rate))
+    )
+    hold_frames = max(1, int(round(final_hold_seconds * frame_rate)))
+    frame_interval = 1.0 / frame_rate
+
+    for step in range(1, transition_frames + 1):
+        amount = _smoothstep(step / transition_frames)
+        poses = tuple(
+            _interpolate_pose(source, target, amount)
+            for source, target in zip(source_frame.poses, final_poses)
+        )
+        output.append(
+            SimulationFrame(
+                source_frame.time_seconds + step * frame_interval,
+                poses,
+            )
+        )
+
+    hold_start = output[-1].time_seconds
+    for step in range(1, hold_frames + 1):
+        output.append(
+            SimulationFrame(
+                hold_start + step * frame_interval,
+                final_poses,
+            )
+        )
+
+    return output
+
+
+def _interpolate_pose(source: BodyPose, target: BodyPose, amount: float) -> BodyPose:
+    source_position = np.asarray(source.position, dtype=float)
+    target_position = np.asarray(target.position, dtype=float)
+    position = source_position * (1.0 - amount) + target_position * amount
+    return BodyPose(
+        position=tuple(float(value) for value in position),
+        orientation=_slerp_quaternion(source.orientation, target.orientation, amount),
+    )
+
+
+def _slerp_quaternion(
+    source: tuple[float, float, float, float],
+    target: tuple[float, float, float, float],
+    amount: float,
+) -> tuple[float, float, float, float]:
+    start = np.asarray(source, dtype=float)
+    end = np.asarray(target, dtype=float)
+    start = start / np.linalg.norm(start)
+    end = end / np.linalg.norm(end)
+    dot = float(np.dot(start, end))
+    if dot < 0.0:
+        end = -end
+        dot = -dot
+    if dot > 0.9995:
+        value = start + amount * (end - start)
+        value /= np.linalg.norm(value)
+        return tuple(float(component) for component in value)
+
+    theta_0 = math.acos(float(np.clip(dot, -1.0, 1.0)))
+    theta = theta_0 * amount
+    sin_theta = math.sin(theta)
+    sin_theta_0 = math.sin(theta_0)
+    scale_start = math.cos(theta) - dot * sin_theta / sin_theta_0
+    scale_end = sin_theta / sin_theta_0
+    value = scale_start * start + scale_end * end
+    return tuple(float(component) for component in value)
+
+
+def _smoothstep(amount: float) -> float:
+    clamped = float(np.clip(amount, 0.0, 1.0))
+    return clamped * clamped * (3.0 - 2.0 * clamped)
 
 
 def _contact_vertex_count(mesh: MeshData, pose: BodyPose) -> int:

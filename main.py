@@ -66,6 +66,7 @@ class ThreeDDicePlugin(Star):
                 height=options.height,
                 fps=options.fps,
                 duration_ms=options.duration_ms,
+                final_hold_ms=options.final_hold_ms,
                 style=options.style,
                 max_cache_files=options.max_cache_files,
                 cache_max_age_seconds=options.cache_max_age_seconds,

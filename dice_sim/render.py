@@ -14,6 +14,8 @@ from .types import MeshData, SimulationFrame, StyleOptions
 GROUND_Z = 0.0
 TABLE_MARGIN = 2.0
 D6_FRONT_FACE_EPSILON = 1e-3
+SCENE_ZOOM = 0.82
+RESULT_LABEL_SECONDS = 5.0
 
 
 def render_frames(
@@ -23,6 +25,7 @@ def render_frames(
     height: int,
     style: StyleOptions,
     final_values: tuple[int, ...],
+    result_label_start_time: float | None = None,
 ) -> list[Image.Image]:
     try:
         frame_list = list(frames)
@@ -30,7 +33,11 @@ def render_frames(
             raise RenderError("No simulation frames were captured.")
         camera = _camera_matrix()
         scale, center, table_corners = _scene_view(mesh, frame_list, width, height, camera)
-        result_label_start = max(0, len(frame_list) - 3)
+        label_start_time = (
+            frame_list[-1].time_seconds - RESULT_LABEL_SECONDS
+            if result_label_start_time is None
+            else result_label_start_time
+        )
         images = [
             _render_one(
                 mesh,
@@ -43,9 +50,9 @@ def render_frames(
                 scale,
                 center,
                 table_corners,
-                show_result_label=index >= result_label_start,
+                show_result_label=frame.time_seconds >= label_start_time,
             )
-            for index, frame in enumerate(frame_list)
+            for frame in frame_list
         ]
         if len(images) < 2:
             images.append(images[0].copy())
@@ -218,7 +225,7 @@ def _scene_view(
     x_span = float(np.ptp(combined[:, 0]))
     y_span = float(np.ptp(combined[:, 1]))
     span = max(3.0, x_span, y_span * 1.15)
-    scale = min(width, height) * 0.70 / span
+    scale = min(width, height) * SCENE_ZOOM / span
     center = np.array(
         [
             (combined[:, 0].min() + combined[:, 0].max()) / 2,

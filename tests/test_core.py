@@ -51,6 +51,7 @@ def test_normalize_config_clamps_values() -> None:
             "height": 9999,
             "fps": 99,
             "duration_ms": 99,
+            "final_hold_ms": 9999,
         }
     )
     assert config["default_dice_type"] == "D10"
@@ -59,6 +60,7 @@ def test_normalize_config_clamps_values() -> None:
     assert config["height"] == 1024
     assert config["fps"] == 30
     assert config["duration_ms"] == 800
+    assert config["final_hold_ms"] == 5000
 
 
 def test_invalid_config_seed_falls_back_to_random_seed() -> None:

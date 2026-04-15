@@ -22,6 +22,12 @@
     "type": "int",
     "default": 5000
   },
+  "final_hold_ms": {
+    "description": "骰子静止后结果展示停留时间，单位毫秒",
+    "type": "int",
+    "default": 3500,
+    "hint": "建议 3000 到 5000，便于看清最终点数"
+  },
   "fps": {
     "description": "GIF 帧率",
     "type": "int",

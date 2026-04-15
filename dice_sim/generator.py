@@ -24,6 +24,7 @@ def roll_gif(
     height: int = 480,
     fps: int = 12,
     duration_ms: int = 5000,
+    final_hold_ms: int = 3500,
     style: StyleOptions | None = None,
     max_cache_files: int = 80,
     cache_max_age_seconds: int = 604800,
@@ -38,6 +39,7 @@ def roll_gif(
         height=height,
         fps=fps,
         duration_ms=duration_ms,
+        final_hold_ms=final_hold_ms,
         style=style or StyleOptions(),
         max_cache_files=max_cache_files,
         cache_max_age_seconds=cache_max_age_seconds,
@@ -55,17 +57,26 @@ def roll_gif_with_options(options: RollOptions) -> RollGifResult:
     height = _clamp_int(options.height, 240, 1024)
     fps = _clamp_int(options.fps, 4, 30)
     duration_ms = _clamp_int(options.duration_ms, 1500, 10000)
+    final_hold_ms = _clamp_int(options.final_hold_ms, 3000, 5000)
     seed = int(options.seed if options.seed is not None else random.SystemRandom().randrange(1, 2**31))
 
     mesh = create_mesh(dice_type)
-    simulation = simulate_roll(mesh, count, seed, duration_ms, fps)
+    simulation = simulate_roll(mesh, count, seed, duration_ms, fps, final_hold_ms)
     if not simulation.settled:
         raise SimulationError(
             f"{dice_type} did not settle within {duration_ms} ms; "
             "increase duration_ms or lower throw intensity."
         )
     values = tuple(detect_result(mesh, pose) for pose in simulation.final_poses)
-    frames = render_frames(mesh, simulation.frames, width, height, options.style, values)
+    frames = render_frames(
+        mesh,
+        simulation.frames,
+        width,
+        height,
+        options.style,
+        values,
+        simulation.settle_time_seconds,
+    )
     output_path = build_output_path(options.output_dir, dice_type, seed, options.output_path)
     encoded_path = encode_gif(frames, output_path, fps)
     cleanup_cache(options.output_dir, options.max_cache_files, options.cache_max_age_seconds)
@@ -80,11 +91,18 @@ def roll_gif_with_options(options: RollOptions) -> RollGifResult:
         height=height,
         fps=fps,
         duration_ms=duration_ms,
+        final_hold_ms=final_hold_ms,
         metadata={
             "frames": len(frames),
             "actual_duration_ms": int(round(simulation.frames[-1].time_seconds * 1000)),
+            "final_hold_ms": final_hold_ms,
             "settled": simulation.settled,
             "settle_time_ms": (
+                None
+                if simulation.settle_time_seconds is None
+                else int(round(simulation.settle_time_seconds * 1000))
+            ),
+            "result_label_start_ms": (
                 None
                 if simulation.settle_time_seconds is None
                 else int(round(simulation.settle_time_seconds * 1000))

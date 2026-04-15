@@ -17,6 +17,7 @@ def main() -> None:
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--fps", type=int, default=12)
     parser.add_argument("--duration-ms", type=int, default=5000)
+    parser.add_argument("--final-hold-ms", type=int, default=3500)
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -29,6 +30,7 @@ def main() -> None:
             height=args.height,
             fps=args.fps,
             duration_ms=args.duration_ms,
+            final_hold_ms=args.final_hold_ms,
         )
         metadata = result.metadata
         print(
@@ -38,6 +40,7 @@ def main() -> None:
             f"settle_ms={metadata.get('settle_time_ms')} "
             f"frames={metadata.get('frames')} "
             f"actual_ms={metadata.get('actual_duration_ms')} "
+            f"final_hold_ms={metadata.get('final_hold_ms')} "
             f"travel={metadata.get('horizontal_travel'):.2f} "
             f"max_h={metadata.get('max_height'):.2f} "
             f"final_v={max(metadata.get('final_linear_speeds') or [0]):.3f} "

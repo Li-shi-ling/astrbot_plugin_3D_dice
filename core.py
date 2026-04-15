@@ -15,6 +15,7 @@ MAX_APP_DICE_COUNT = 6
 DEFAULT_DICE_TYPE = "D6"
 DEFAULT_DICE_COUNT = 1
 DEFAULT_DURATION_MS = 5000
+DEFAULT_FINAL_HOLD_MS = 3500
 DEFAULT_FPS = 12
 DEFAULT_WIDTH = 640
 DEFAULT_HEIGHT = 480
@@ -39,6 +40,7 @@ class DiceRollRequest:
 @dataclass(frozen=True)
 class DiceRenderOptions:
     duration_ms: int
+    final_hold_ms: int
     fps: int
     width: int
     height: int
@@ -113,6 +115,11 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
             800,
             10000,
         ),
+        "final_hold_ms": _int_in_range(
+            config.get("final_hold_ms", DEFAULT_FINAL_HOLD_MS),
+            3000,
+            5000,
+        ),
         "fps": _int_in_range(config.get("fps", DEFAULT_FPS), 4, 30),
         "width": _int_in_range(config.get("width", DEFAULT_WIDTH), 240, 1024),
         "height": _int_in_range(config.get("height", DEFAULT_HEIGHT), 240, 1024),
@@ -128,6 +135,7 @@ def build_render_options(config: dict[str, Any] | None = None) -> DiceRenderOpti
     normalized = normalize_config(config or {})
     return DiceRenderOptions(
         duration_ms=normalized["duration_ms"],
+        final_hold_ms=normalized["final_hold_ms"],
         fps=normalized["fps"],
         width=normalized["width"],
         height=normalized["height"],

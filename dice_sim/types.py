@@ -67,6 +67,7 @@ class RollOptions:
     height: int = 480
     fps: int = 12
     duration_ms: int = 5000
+    final_hold_ms: int = 3500
     style: StyleOptions = field(default_factory=StyleOptions)
     max_cache_files: int = 80
     cache_max_age_seconds: int = 604800
@@ -84,6 +85,7 @@ class RollGifResult:
     height: int
     fps: int
     duration_ms: int
+    final_hold_ms: int
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
@@ -98,6 +100,7 @@ class RollGifResult:
             "height": self.height,
             "fps": self.fps,
             "duration_ms": self.duration_ms,
+            "final_hold_ms": self.final_hold_ms,
             "metadata": dict(self.metadata),
         }
 
