@@ -12,7 +12,7 @@ from .result import quaternion_to_matrix
 from .types import MeshData, SimulationFrame, StyleOptions
 
 GROUND_Z = 0.0
-TABLE_MARGIN = 1.25
+TABLE_MARGIN = 2.0
 D6_FRONT_FACE_EPSILON = 1e-3
 
 

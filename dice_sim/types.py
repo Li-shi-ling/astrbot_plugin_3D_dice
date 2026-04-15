@@ -43,6 +43,8 @@ class SimulationResult:
     horizontal_travel: float = 0.0
     max_height: float = 0.0
     final_contact_vertices: tuple[int, ...] = field(default_factory=tuple)
+    inter_body_contact_count: int = 0
+    inter_body_contact_steps: int = 0
 
 
 @dataclass(frozen=True)

@@ -94,6 +94,8 @@ def roll_gif_with_options(options: RollOptions) -> RollGifResult:
             "final_contact_vertices": list(simulation.final_contact_vertices),
             "horizontal_travel": simulation.horizontal_travel,
             "max_height": simulation.max_height,
+            "inter_body_contact_count": simulation.inter_body_contact_count,
+            "inter_body_contact_steps": simulation.inter_body_contact_steps,
             "result_rule": mesh.result_rule,
             "renderer": "pillow-software",
             "physics": "pybullet-direct",

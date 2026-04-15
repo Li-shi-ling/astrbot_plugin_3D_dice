@@ -9,12 +9,12 @@
     "description": "默认骰子数量",
     "type": "int",
     "default": 1,
-    "hint": "一次建议 1 到 3 个骰子，最多 6 个"
+    "hint": "一次可投 1 到 6 个骰子"
   },
   "max_count": {
     "description": "允许用户一次投掷的最大骰子数量",
     "type": "int",
-    "default": 3,
+    "default": 6,
     "hint": "最大会被限制为 6"
   },
   "duration_ms": {

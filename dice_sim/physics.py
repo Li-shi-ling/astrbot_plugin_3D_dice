@@ -15,11 +15,13 @@ QUIET_LINEAR_SPEED = 0.12
 QUIET_ANGULAR_SPEED = 0.25
 QUIET_HOLD_SECONDS = 0.25
 POST_SETTLE_HOLD_SECONDS = 0.35
-TABLE_HALF_EXTENTS = [7.0, 4.5, 0.08]
+TABLE_HALF_EXTENTS = [24.0, 16.0, 0.08]
 TABLE_TOP_Z = 0.0
-THROW_START_X = -4.15
-THROW_START_Y = -1.35
-THROW_START_Z = 2.45
+THROW_START_X = -5.7
+THROW_START_Y = -2.35
+THROW_START_Z = 2.55
+MULTI_DICE_COLUMN_GAP = 2.45
+MULTI_DICE_ROW_GAP = 2.55
 D6_TUMBLE_SPEED_RANGE = (13.0, 18.0)
 
 
@@ -79,14 +81,8 @@ def simulate_roll(
             physicsClientId=client,
         )
 
-        spacing = 0.78
-        start_x = THROW_START_X - spacing * (count - 1) / 2
         for idx in range(count):
-            position = [
-                start_x + idx * spacing + rng.uniform(-0.12, 0.12),
-                THROW_START_Y + idx * 0.18 + rng.uniform(-0.16, 0.16),
-                THROW_START_Z + idx * 0.22 + rng.uniform(-0.05, 0.08),
-            ]
+            position = _initial_position(count, idx, rng)
             orientation = p.getQuaternionFromEuler(
                 [
                     rng.random() * 2 * math.pi,
@@ -102,7 +98,7 @@ def simulate_roll(
                 baseOrientation=orientation,
                 physicsClientId=client,
             )
-            dynamics = _body_dynamics(mesh)
+            dynamics = _body_dynamics(mesh, count)
             p.changeDynamics(
                 body,
                 -1,
@@ -114,7 +110,10 @@ def simulate_roll(
                 angularDamping=dynamics["angular_damping"],
                 physicsClientId=client,
             )
-            linear_velocity = _initial_linear_velocity(mesh, rng)
+            target = _throw_target(count, idx, rng)
+            linear_velocity = _initial_linear_velocity(
+                mesh, count, position, target, rng
+            )
             p.resetBaseVelocity(
                 body,
                 linearVelocity=linear_velocity,
@@ -123,9 +122,13 @@ def simulate_roll(
             )
             bodies.append(body)
 
-        frames, settled, settle_time = _capture_until_settled(
-            p, client, bodies, duration_ms, fps
-        )
+        (
+            frames,
+            settled,
+            settle_time,
+            body_contact_count,
+            body_contact_steps,
+        ) = _capture_until_settled(p, client, bodies, duration_ms, fps)
         raw_final_poses = tuple(_pose_for_body(p, client, body) for body in bodies)
         final_poses = tuple(_face_rest_pose(mesh, pose) for pose in raw_final_poses)
         if settled:
@@ -144,6 +147,8 @@ def simulate_roll(
             final_contact_vertices=tuple(
                 _contact_vertex_count(mesh, pose) for pose in final_poses
             ),
+            inter_body_contact_count=body_contact_count,
+            inter_body_contact_steps=body_contact_steps,
         )
     except MissingDependencyError:
         raise
@@ -156,8 +161,48 @@ def simulate_roll(
             pass
 
 
-def _body_dynamics(mesh: MeshData) -> dict[str, float]:
+def _initial_position(count: int, idx: int, rng: random.Random) -> list[float]:
+    if count <= 1:
+        return [
+            THROW_START_X + rng.uniform(-0.12, 0.12),
+            THROW_START_Y + rng.uniform(-0.16, 0.16),
+            THROW_START_Z + rng.uniform(-0.05, 0.08),
+        ]
+
+    columns = 2 if count > 3 else 1
+    rows = math.ceil(count / columns)
+    column = idx % columns
+    row = idx // columns
+    return [
+        THROW_START_X + column * MULTI_DICE_COLUMN_GAP + rng.uniform(-0.04, 0.04),
+        THROW_START_Y
+        + (row - (rows - 1) / 2) * MULTI_DICE_ROW_GAP
+        + rng.uniform(-0.07, 0.07),
+        THROW_START_Z + row * 0.16 + column * 0.10 + rng.uniform(-0.03, 0.06),
+    ]
+
+
+def _throw_target(count: int, idx: int, rng: random.Random) -> list[float]:
+    if count <= 1:
+        return [1.2 + rng.uniform(-0.35, 0.35), 0.0 + rng.uniform(-0.45, 0.45)]
+    lane_bias = (idx - (count - 1) / 2) * 0.10
+    return [
+        0.55 + rng.uniform(-0.45, 0.45),
+        lane_bias + rng.uniform(-0.55, 0.55),
+    ]
+
+
+def _body_dynamics(mesh: MeshData, count: int) -> dict[str, float]:
     if mesh.dice_type == "D6":
+        if count > 1:
+            return {
+                "lateral_friction": 1.35,
+                "restitution": 0.10,
+                "rolling_friction": 0.18,
+                "spinning_friction": 0.14,
+                "linear_damping": 0.012,
+                "angular_damping": 0.018,
+            }
         return {
             "lateral_friction": 1.18,
             "restitution": 0.16,
@@ -176,17 +221,28 @@ def _body_dynamics(mesh: MeshData) -> dict[str, float]:
     }
 
 
-def _initial_linear_velocity(mesh: MeshData, rng: random.Random) -> list[float]:
+def _initial_linear_velocity(
+    mesh: MeshData,
+    count: int,
+    position: list[float],
+    target: list[float],
+    rng: random.Random,
+) -> list[float]:
+    travel_seconds = rng.uniform(1.35, 1.70) if count > 1 else rng.uniform(1.05, 1.32)
+    velocity_x = (target[0] - position[0]) / travel_seconds
+    velocity_y = (target[1] - position[1]) / travel_seconds
     if mesh.dice_type == "D6":
+        vertical_speed = rng.uniform(3.2, 4.0) if count > 1 else rng.uniform(4.0, 5.0)
         return [
-            rng.uniform(4.7, 5.5),
-            rng.uniform(0.45, 1.10),
-            rng.uniform(4.0, 5.0),
+            velocity_x + rng.uniform(-0.18, 0.18),
+            velocity_y + rng.uniform(-0.18, 0.18),
+            vertical_speed,
         ]
+    vertical_speed = rng.uniform(2.8, 3.6) if count > 1 else rng.uniform(3.0, 4.2)
     return [
-        rng.uniform(4.1, 5.0),
-        rng.uniform(0.55, 1.35),
-        rng.uniform(3.0, 4.2),
+        velocity_x + rng.uniform(-0.22, 0.22),
+        velocity_y + rng.uniform(-0.22, 0.22),
+        vertical_speed,
     ]
 
 
@@ -222,7 +278,7 @@ def _initial_angular_velocity(
 
 def _capture_until_settled(
     p: Any, client: int, bodies: list[int], duration_ms: int, fps: int
-) -> tuple[list[SimulationFrame], bool, float | None]:
+) -> tuple[list[SimulationFrame], bool, float | None, int, int]:
     max_steps = max(1, int(PHYSICS_HZ * duration_ms / 1000))
     capture_interval = max(1, int(PHYSICS_HZ / max(1, fps)))
     quiet_hold_steps = max(1, int(QUIET_HOLD_SECONDS * PHYSICS_HZ))
@@ -233,9 +289,15 @@ def _capture_until_settled(
     frames: list[SimulationFrame] = []
     quiet_steps = 0
     settled_at_step: int | None = None
+    body_contact_count = 0
+    body_contact_steps = 0
 
     for step in range(max_steps):
         p.stepSimulation(physicsClientId=client)
+        contact_pairs = _inter_body_contact_pairs(p, client, bodies)
+        if contact_pairs:
+            body_contact_count += len(contact_pairs)
+            body_contact_steps += 1
         quiet_steps = (
             quiet_steps + 1
             if all(_body_is_quiet(p, client, body) for body in bodies)
@@ -268,7 +330,28 @@ def _capture_until_settled(
     if final_frame.poses != frames[-1].poses:
         frames.append(final_frame)
     settle_time = None if settled_at_step is None else settled_at_step / PHYSICS_HZ
-    return frames, settled_at_step is not None, settle_time
+    return (
+        frames,
+        settled_at_step is not None,
+        settle_time,
+        body_contact_count,
+        body_contact_steps,
+    )
+
+
+def _inter_body_contact_pairs(
+    p: Any, client: int, bodies: list[int]
+) -> set[tuple[int, int]]:
+    if len(bodies) < 2:
+        return set()
+    body_ids = set(bodies)
+    pairs: set[tuple[int, int]] = set()
+    for contact in p.getContactPoints(physicsClientId=client):
+        body_a = int(contact[1])
+        body_b = int(contact[2])
+        if body_a in body_ids and body_b in body_ids and body_a != body_b:
+            pairs.add(tuple(sorted((body_a, body_b))))
+    return pairs
 
 
 def _body_is_quiet(p: Any, client: int, body: int) -> bool:

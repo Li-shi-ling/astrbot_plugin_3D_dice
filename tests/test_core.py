@@ -36,6 +36,12 @@ def test_count_bounds() -> None:
         parse_roll_request("/roll3d 7d6", {"max_count": 6})
 
 
+def test_default_config_allows_six_dice() -> None:
+    request = parse_roll_request("/roll3d 6d6")
+    assert request.dice_type == "D6"
+    assert request.count == 6
+
+
 def test_normalize_config_clamps_values() -> None:
     config = normalize_config(
         {

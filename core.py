@@ -99,7 +99,9 @@ def parse_roll_request(
 
 
 def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
-    max_count = _int_in_range(config.get("max_count", 3), 1, MAX_APP_DICE_COUNT)
+    max_count = _int_in_range(
+        config.get("max_count", MAX_APP_DICE_COUNT), 1, MAX_APP_DICE_COUNT
+    )
     default_count = normalize_dice_count(config.get("default_count", DEFAULT_DICE_COUNT), max_count)
     seed = _optional_int(config.get("seed"))
     return {
