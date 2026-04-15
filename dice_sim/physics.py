@@ -15,6 +15,7 @@ QUIET_LINEAR_SPEED = 0.12
 QUIET_ANGULAR_SPEED = 0.25
 QUIET_HOLD_SECONDS = 0.25
 POST_SETTLE_HOLD_SECONDS = 0.35
+FINAL_FACE_HOLD_SECONDS = 0.75
 TABLE_HALF_EXTENTS = [24.0, 16.0, 0.08]
 TABLE_TOP_Z = 0.0
 THROW_START_X = -5.7
@@ -132,7 +133,9 @@ def simulate_roll(
         raw_final_poses = tuple(_pose_for_body(p, client, body) for body in bodies)
         final_poses = tuple(_face_rest_pose(mesh, pose) for pose in raw_final_poses)
         if settled:
-            frames = _replace_final_hold_frames(frames, final_poses, fps)
+            frames = _replace_final_hold_frames(
+                frames, final_poses, fps, settle_time
+            )
         linear_speeds, angular_speeds = _speeds_for_bodies(p, client, bodies)
         return SimulationResult(
             frames=tuple(frames),
@@ -421,12 +424,20 @@ def _face_rest_pose(mesh: MeshData, pose: BodyPose) -> BodyPose:
 
 
 def _replace_final_hold_frames(
-    frames: list[SimulationFrame], final_poses: tuple[BodyPose, ...], fps: int
+    frames: list[SimulationFrame],
+    final_poses: tuple[BodyPose, ...],
+    fps: int,
+    settle_time: float | None,
 ) -> list[SimulationFrame]:
     if not frames:
         return frames
-    hold_frames = max(2, int(round(POST_SETTLE_HOLD_SECONDS * max(1, fps))))
+    hold_frames = max(2, int(round(FINAL_FACE_HOLD_SECONDS * max(1, fps))))
     start = max(0, len(frames) - hold_frames)
+    if settle_time is not None:
+        for index, frame in enumerate(frames):
+            if frame.time_seconds >= settle_time:
+                start = min(start, index)
+                break
     return [
         frame if index < start else SimulationFrame(frame.time_seconds, final_poses)
         for index, frame in enumerate(frames)

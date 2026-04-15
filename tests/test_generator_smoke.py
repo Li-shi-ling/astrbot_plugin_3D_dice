@@ -39,9 +39,10 @@ def test_roll_gif_writes_animated_file_for_supported_dice(tmp_path, dice_type: s
 @pytest.mark.skipif(
     importlib.util.find_spec("pybullet") is None, reason="pybullet is not installed"
 )
-def test_roll_gif_six_dice_share_physics_world(tmp_path) -> None:
+@pytest.mark.parametrize("dice_type", SUPPORTED_DICE_TYPES)
+def test_roll_gif_six_dice_share_physics_world(tmp_path, dice_type: str) -> None:
     result = roll_gif(
-        "D6",
+        dice_type,
         count=6,
         output_dir=tmp_path,
         seed=123,
@@ -54,3 +55,5 @@ def test_roll_gif_six_dice_share_physics_world(tmp_path) -> None:
     assert result.metadata["settled"] is True
     assert result.metadata["inter_body_contact_count"] > 0
     assert result.metadata["inter_body_contact_steps"] > 0
+    expected_contact_vertices = 4 if dice_type == "D6" else 3
+    assert result.metadata["final_contact_vertices"] == [expected_contact_vertices] * 6
