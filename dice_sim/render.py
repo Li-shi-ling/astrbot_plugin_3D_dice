@@ -107,6 +107,7 @@ def _render_one(
     light /= np.linalg.norm(light)
     d4_vertex_values = _d4_vertex_values(mesh) if mesh.dice_type == "D4" else {}
     number_decals: list[tuple[np.ndarray, str]] = []
+    d6_pip_decals: list[tuple[np.ndarray, int]] = []
     d4_face_decals: list[tuple[np.ndarray, tuple[int, ...], int]] = []
 
     for (
@@ -132,6 +133,11 @@ def _render_one(
                 d4_face_decals.append(
                     (polygon_points.copy(), tuple(surface), top_vertex)
                 )
+        elif mesh.dice_type == "D6" and normal[2] > 0.08:
+            if surface_index < len(mesh.result_values):
+                d6_pip_decals.append(
+                    (polygon_points.copy(), int(mesh.result_values[surface_index]))
+                )
         elif normal[2] > 0.08 and surface_index < len(mesh.result_values):
             number_decals.append(
                 (polygon_points.copy(), str(mesh.result_values[surface_index]))
@@ -139,6 +145,8 @@ def _render_one(
 
     for polygon_points, text in number_decals:
         _draw_face_number(image, polygon_points, text, ink_color)
+    for polygon_points, value in d6_pip_decals:
+        _draw_d6_pips(image, polygon_points, value, ink_color)
     for polygon_points, surface, top_vertex in d4_face_decals:
         _draw_d4_face_numbers(
             image,
@@ -304,6 +312,21 @@ def _draw_face_number(
     _draw_textured_polygon(image, points, source_polygon, texture)
 
 
+def _draw_d6_pips(
+    image: Image.Image,
+    points: np.ndarray,
+    value: int,
+    ink_color: tuple[int, int, int],
+) -> None:
+    area = _polygon_area(points)
+    if area < 18:
+        return
+    texture_size = 384
+    source_polygon = _texture_polygon(4, texture_size)
+    texture = _d6_pip_texture(value, ink_color, texture_size)
+    _draw_textured_polygon(image, points, source_polygon, texture)
+
+
 def _draw_d4_face_numbers(
     image: Image.Image,
     points: np.ndarray,
@@ -435,6 +458,54 @@ def _face_number_texture(
         center = (texture_size / 2, texture_size / 2)
         font_size = int(texture_size * (0.46 if len(text) == 1 else 0.34))
     return _labeled_face_texture(((text, center),), ink_color, texture_size, font_size)
+
+
+@lru_cache(maxsize=64)
+def _d6_pip_texture(
+    value: int,
+    ink_color: tuple[int, int, int],
+    texture_size: int,
+) -> Image.Image:
+    image = Image.new("RGBA", (texture_size, texture_size), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(image)
+    radius = texture_size * 0.065
+    for x, y in _d6_pip_positions(value, texture_size):
+        draw.ellipse(
+            [x - radius, y - radius, x + radius, y + radius],
+            fill=(*ink_color, 255),
+        )
+    return image
+
+
+def _d6_pip_positions(value: int, texture_size: int) -> tuple[tuple[float, float], ...]:
+    left = texture_size * 0.34
+    center = texture_size * 0.50
+    right = texture_size * 0.66
+    top = texture_size * 0.32
+    middle = texture_size * 0.50
+    bottom = texture_size * 0.68
+    layouts = {
+        1: ((center, middle),),
+        2: ((left, top), (right, bottom)),
+        3: ((left, top), (center, middle), (right, bottom)),
+        4: ((left, top), (right, top), (left, bottom), (right, bottom)),
+        5: (
+            (left, top),
+            (right, top),
+            (center, middle),
+            (left, bottom),
+            (right, bottom),
+        ),
+        6: (
+            (left, top),
+            (right, top),
+            (left, middle),
+            (right, middle),
+            (left, bottom),
+            (right, bottom),
+        ),
+    }
+    return layouts.get(int(value), ())
 
 
 @lru_cache(maxsize=512)
