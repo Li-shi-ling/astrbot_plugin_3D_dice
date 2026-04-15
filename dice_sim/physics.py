@@ -63,10 +63,10 @@ def simulate_roll(
         p.changeDynamics(
             table_body,
             -1,
-            lateralFriction=1.35,
-            restitution=0.10,
-            rollingFriction=0.18,
-            spinningFriction=0.16,
+            lateralFriction=1.10,
+            restitution=0.14,
+            rollingFriction=0.08,
+            spinningFriction=0.06,
             physicsClientId=client,
         )
 
@@ -204,28 +204,46 @@ def _body_dynamics(mesh: MeshData, count: int) -> dict[str, float]:
     if mesh.dice_type == "D6":
         if count > 1:
             return {
-                "lateral_friction": 1.35,
-                "restitution": 0.10,
-                "rolling_friction": 0.18,
-                "spinning_friction": 0.14,
-                "linear_damping": 0.012,
+                "lateral_friction": 1.12,
+                "restitution": 0.13,
+                "rolling_friction": 0.10,
+                "spinning_friction": 0.075,
+                "linear_damping": 0.010,
+                "angular_damping": 0.012,
+            }
+        return {
+            "lateral_friction": 1.00,
+            "restitution": 0.18,
+            "rolling_friction": 0.045,
+            "spinning_friction": 0.032,
+            "linear_damping": 0.006,
+            "angular_damping": 0.004,
+        }
+    if mesh.dice_type == "D8":
+        if count > 1:
+            return {
+                "lateral_friction": 1.18,
+                "restitution": 0.12,
+                "rolling_friction": 0.16,
+                "spinning_friction": 0.13,
+                "linear_damping": 0.013,
                 "angular_damping": 0.018,
             }
         return {
-            "lateral_friction": 1.18,
-            "restitution": 0.16,
-            "rolling_friction": 0.075,
-            "spinning_friction": 0.055,
-            "linear_damping": 0.008,
-            "angular_damping": 0.006,
+            "lateral_friction": 1.10,
+            "restitution": 0.14,
+            "rolling_friction": 0.12,
+            "spinning_friction": 0.095,
+            "linear_damping": 0.012,
+            "angular_damping": 0.014,
         }
     return {
-        "lateral_friction": 1.25,
-        "restitution": 0.12,
-        "rolling_friction": 0.20,
-        "spinning_friction": 0.18,
-        "linear_damping": 0.015,
-        "angular_damping": 0.02,
+        "lateral_friction": 1.08,
+        "restitution": 0.14,
+        "rolling_friction": 0.11,
+        "spinning_friction": 0.085,
+        "linear_damping": 0.012,
+        "angular_damping": 0.014,
     }
 
 
