@@ -61,8 +61,8 @@ class RollOptions:
     output_dir: Path | str | None = None
     output_path: Path | str | None = None
     seed: int | None = None
-    width: int = 480
-    height: int = 360
+    width: int = 640
+    height: int = 480
     fps: int = 12
     duration_ms: int = 5000
     style: StyleOptions = field(default_factory=StyleOptions)

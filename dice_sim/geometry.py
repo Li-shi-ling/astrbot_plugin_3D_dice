@@ -47,7 +47,7 @@ def _tetrahedron() -> MeshData:
         faces=faces,
         result_normals=normals,
         result_values=(1, 2, 3, 4),
-        result_rule="bottom_face",
+        result_rule="top_vertex",
         result_centers=centers,
         render_faces=tuple(tuple(face) for face in faces.tolist()),
     )

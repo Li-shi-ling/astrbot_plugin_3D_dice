@@ -7,14 +7,31 @@ from .types import BodyPose, MeshData
 
 def detect_result(mesh: MeshData, pose: BodyPose) -> int:
     matrix = quaternion_to_matrix(pose.orientation)
+    if mesh.result_rule == "top_vertex":
+        index = _opposite_face_for_top_vertex(mesh, matrix)
+    else:
+        world_normals = mesh.result_normals @ matrix.T
+        if mesh.result_rule == "bottom_face":
+            index = int(np.argmin(world_normals[:, 2]))
+        else:
+            index = int(np.argmax(world_normals[:, 2]))
+    value = int(mesh.result_values[index])
+    _validate_value(mesh.dice_type, value)
+    return value
+
+
+def _opposite_face_for_top_vertex(mesh: MeshData, matrix: np.ndarray) -> int:
+    world_vertices = mesh.vertices @ matrix.T
+    top_vertex = int(np.argmax(world_vertices[:, 2]))
+    for face_index, surface in enumerate(mesh.render_faces):
+        if top_vertex not in surface:
+            return face_index
     world_normals = mesh.result_normals @ matrix.T
     if mesh.result_rule == "bottom_face":
         index = int(np.argmin(world_normals[:, 2]))
     else:
         index = int(np.argmax(world_normals[:, 2]))
-    value = int(mesh.result_values[index])
-    _validate_value(mesh.dice_type, value)
-    return value
+    return index
 
 
 def quaternion_to_matrix(quat_xyzw: tuple[float, float, float, float]) -> np.ndarray:

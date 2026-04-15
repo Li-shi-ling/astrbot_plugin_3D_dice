@@ -14,10 +14,10 @@ COMMAND_NAMES = ("3d_dice", "3ddice", "dice3d", "roll3d", "投骰子", "骰子")
 MAX_APP_DICE_COUNT = 6
 DEFAULT_DICE_TYPE = "D6"
 DEFAULT_DICE_COUNT = 1
-DEFAULT_DURATION_MS = 2200
+DEFAULT_DURATION_MS = 5000
 DEFAULT_FPS = 12
-DEFAULT_WIDTH = 480
-DEFAULT_HEIGHT = 360
+DEFAULT_WIDTH = 640
+DEFAULT_HEIGHT = 480
 
 DEPENDENCY_UNAVAILABLE_TEXT = (
     "3D骰子功能还没准备好：缺少 Python 物理/GIF 依赖。"
@@ -109,7 +109,7 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         "duration_ms": _int_in_range(
             config.get("duration_ms", config.get("duration", DEFAULT_DURATION_MS)),
             800,
-            6000,
+            10000,
         ),
         "fps": _int_in_range(config.get("fps", DEFAULT_FPS), 4, 30),
         "width": _int_in_range(config.get("width", DEFAULT_WIDTH), 240, 1024),

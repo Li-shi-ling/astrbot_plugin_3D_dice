@@ -75,30 +75,18 @@ def _render_one(
     for body_index, pose in enumerate(frame.poses):
         rotation = quaternion_to_matrix(pose.orientation)
         world_points = mesh.vertices @ rotation.T + np.asarray(pose.position)
-        world_normals = mesh.result_normals @ rotation.T
-        top_surface_index = int(np.argmax(world_normals[:, 2]))
-        projected = _project_world(world_points, camera, width, height, scale, center)
-        projected_bodies.append(
-            (body_index, projected, world_points, world_normals, top_surface_index)
+        top_vertex = (
+            int(np.argmax(world_points[:, 2])) if mesh.dice_type == "D4" else -1
         )
+        projected = _project_world(world_points, camera, width, height, scale, center)
+        projected_bodies.append((body_index, projected, world_points, top_vertex))
         _draw_shadow(draw, world_points, camera, width, height, scale, center)
 
     surfaces_to_draw = []
-    for (
-        body_index,
-        projected,
-        _world_points,
-        world_normals,
-        top_surface_index,
-    ) in projected_bodies:
+    for body_index, projected, _world_points, top_vertex in projected_bodies:
         for surface_index, surface in enumerate(mesh.render_faces):
             pts = projected[list(surface)]
             depth = float(pts[:, 2].mean())
-            world_normal_z = (
-                float(world_normals[surface_index, 2])
-                if surface_index < len(world_normals)
-                else 0.0
-            )
             surfaces_to_draw.append(
                 (
                     depth,
@@ -106,8 +94,7 @@ def _render_one(
                     surface_index,
                     surface,
                     pts,
-                    world_normal_z,
-                    surface_index == top_surface_index,
+                    top_vertex,
                 )
             )
     surfaces_to_draw.sort(key=lambda item: item[0])
@@ -117,7 +104,9 @@ def _render_one(
     edge_color = _hex(style.edge_color)
     light = np.array([0.2, -0.45, 0.87], dtype=float)
     light /= np.linalg.norm(light)
+    d4_vertex_values = _d4_vertex_values(mesh) if mesh.dice_type == "D4" else {}
     number_decals: list[tuple[np.ndarray, str]] = []
+    d4_tip_decals: list[tuple[np.ndarray, str, float]] = []
 
     for (
         _depth,
@@ -125,8 +114,7 @@ def _render_one(
         surface_index,
         surface,
         pts,
-        _world_normal_z,
-        is_top_surface,
+        top_vertex,
     ) in surfaces_to_draw:
         polygon_points = pts[:, :2]
         if _polygon_area(polygon_points) <= 1:
@@ -137,35 +125,57 @@ def _render_one(
         polygon = [tuple(point) for point in polygon_points]
         draw.polygon(polygon, fill=color)
         draw.line(polygon + [polygon[0]], fill=edge_color, width=2)
-        if (
-            is_top_surface
-            and normal[2] > 0.08
-            and surface_index < len(mesh.result_values)
-        ):
-            value = mesh.result_values[surface_index]
-            if (
-                mesh.dice_type == "D4"
-                and show_result_label
-                and _body_index < len(final_values)
-            ):
-                value = final_values[_body_index]
+        if mesh.dice_type == "D4":
+            show_d4_labels = normal[2] > 0.08 or top_vertex in surface
+            if show_d4_labels and surface_index < len(mesh.result_values):
+                face_center = polygon_points.mean(axis=0)
+                area = _polygon_area(polygon_points)
+                for vertex_index, point in zip(surface, polygon_points):
+                    value = d4_vertex_values.get(vertex_index)
+                    if value is None:
+                        continue
+                    vertex_weight = 0.42 if vertex_index == top_vertex else 0.72
+                    label_position = (
+                        face_center * (1.0 - vertex_weight) + point * vertex_weight
+                    )
+                    d4_tip_decals.append((label_position, str(value), area))
+        elif normal[2] > 0.08 and surface_index < len(mesh.result_values):
             number_decals.append(
-                (polygon_points.copy(), str(value))
+                (polygon_points.copy(), str(mesh.result_values[surface_index]))
             )
 
     for polygon_points, text in number_decals:
         _draw_face_number(image, polygon_points, text, ink_color)
+    for center, text, area in d4_tip_decals:
+        _draw_tip_number(image, center, text, ink_color, area)
 
     if show_result_label:
         label_font = _font(max(13, min(width, height) // 22))
         result_text = _result_text(mesh.dice_type, final_values)
+        bbox = draw.textbbox((0, 0), result_text, font=label_font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        label_left = 12
+        label_top = 12
+        padding_x = 12
+        padding_y = 7
         draw.rounded_rectangle(
-            [12, 12, min(width - 12, 20 + len(result_text) * 8), 42],
+            [
+                label_left,
+                label_top,
+                min(width - 12, label_left + text_width + padding_x * 2),
+                label_top + text_height + padding_y * 2,
+            ],
             radius=6,
             fill=(255, 255, 255),
             outline=(0, 0, 0),
         )
-        draw.text((22, 20), result_text, fill=_hex(style.label_color), font=label_font)
+        draw.text(
+            (label_left + padding_x - bbox[0], label_top + padding_y - bbox[1]),
+            result_text,
+            fill=_hex(style.label_color),
+            font=label_font,
+        )
     return image
 
 
@@ -269,6 +279,16 @@ def _draw_shadow(
     draw.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=(183, 190, 202))
 
 
+def _d4_vertex_values(mesh: MeshData) -> dict[int, int]:
+    values: dict[int, int] = {}
+    for vertex_index in range(len(mesh.vertices)):
+        for face_index, surface in enumerate(mesh.render_faces):
+            if vertex_index not in surface and face_index < len(mesh.result_values):
+                values[vertex_index] = int(mesh.result_values[face_index])
+                break
+    return values
+
+
 def _draw_face_number(
     image: Image.Image,
     points: np.ndarray,
@@ -303,6 +323,30 @@ def _draw_face_number(
             min(36, math.sqrt(area) * text_scale, edge_length * edge_scale),
         )
     )
+    _paste_number_text(image, points.mean(axis=0), text, ink_color, size, angle)
+
+
+def _draw_tip_number(
+    image: Image.Image,
+    center: np.ndarray,
+    text: str,
+    ink_color: tuple[int, int, int],
+    face_area: float,
+) -> None:
+    if face_area < 24:
+        return
+    size = int(max(12, min(28, math.sqrt(face_area) * 0.40)))
+    _paste_number_text(image, center, text, ink_color, size, 0.0)
+
+
+def _paste_number_text(
+    image: Image.Image,
+    center: np.ndarray,
+    text: str,
+    ink_color: tuple[int, int, int],
+    size: int,
+    angle: float,
+) -> None:
     font = _font(size)
     probe = Image.new("L", (1, 1))
     probe_draw = ImageDraw.Draw(probe)
@@ -332,7 +376,6 @@ def _draw_face_number(
     except AttributeError:
         resample = Image.BICUBIC
     rotated = tile.rotate(angle, resample=resample, expand=True)
-    center = points.mean(axis=0)
     paste_at = (
         int(round(float(center[0]) - rotated.width / 2)),
         int(round(float(center[1]) - rotated.height / 2)),

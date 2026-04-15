@@ -13,9 +13,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate sample physical dice GIFs.")
     parser.add_argument("--output-dir", default="outputs/smoke", help="Directory for generated GIFs.")
     parser.add_argument("--seed", type=int, default=1000, help="Base deterministic seed.")
-    parser.add_argument("--width", type=int, default=360)
-    parser.add_argument("--height", type=int, default=300)
-    parser.add_argument("--fps", type=int, default=10)
+    parser.add_argument("--width", type=int, default=640)
+    parser.add_argument("--height", type=int, default=480)
+    parser.add_argument("--fps", type=int, default=12)
     parser.add_argument("--duration-ms", type=int, default=5000)
     args = parser.parse_args()
 

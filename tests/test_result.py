@@ -23,12 +23,22 @@ def test_quaternion_matrix_rotates_x_to_y() -> None:
     assert pytest_approx_tuple(rotated) == (0.0, 1.0, 0.0)
 
 
-def test_d4_uses_bottom_face_rule() -> None:
+def test_d4_uses_top_vertex_rule() -> None:
     mesh = create_mesh("D4")
     pose = BodyPose(position=(0.0, 0.0, 0.0), orientation=(0.0, 0.0, 0.0, 1.0))
+    matrix = quaternion_to_matrix(pose.orientation)
+    rotated_vertices = mesh.vertices @ matrix.T
+    top_vertex = int(
+        max(range(len(mesh.vertices)), key=lambda idx: rotated_vertices[idx, 2])
+    )
+    expected = next(
+        mesh.result_values[index]
+        for index, surface in enumerate(mesh.render_faces)
+        if top_vertex not in surface
+    )
     value = detect_result(mesh, pose)
-    assert value in mesh.result_values
-    assert mesh.result_rule == "bottom_face"
+    assert value == expected
+    assert mesh.result_rule == "top_vertex"
 
 
 def pytest_approx_tuple(values):

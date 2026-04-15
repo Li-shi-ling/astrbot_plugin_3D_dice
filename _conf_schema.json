@@ -20,7 +20,7 @@
   "duration_ms": {
     "description": "GIF 动画时长，单位毫秒",
     "type": "int",
-    "default": 2200
+    "default": 5000
   },
   "fps": {
     "description": "GIF 帧率",
@@ -30,12 +30,12 @@
   "width": {
     "description": "GIF 宽度",
     "type": "int",
-    "default": 480
+    "default": 640
   },
   "height": {
     "description": "GIF 高度",
     "type": "int",
-    "default": 360
+    "default": 480
   },
   "seed": {
     "description": "可选默认随机种子，留空则每次随机",
