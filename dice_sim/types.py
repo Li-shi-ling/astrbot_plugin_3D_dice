@@ -45,6 +45,7 @@ class SimulationResult:
     final_contact_vertices: tuple[int, ...] = field(default_factory=tuple)
     inter_body_contact_count: int = 0
     inter_body_contact_steps: int = 0
+    result_label_start_seconds: float | None = None
 
 
 @dataclass(frozen=True)
