@@ -75,46 +75,86 @@ def _render_one(
     for body_index, pose in enumerate(frame.poses):
         rotation = quaternion_to_matrix(pose.orientation)
         world_points = mesh.vertices @ rotation.T + np.asarray(pose.position)
+        world_normals = mesh.result_normals @ rotation.T
+        top_surface_index = int(np.argmax(world_normals[:, 2]))
         projected = _project_world(world_points, camera, width, height, scale, center)
-        projected_bodies.append((body_index, projected, world_points))
+        projected_bodies.append(
+            (body_index, projected, world_points, world_normals, top_surface_index)
+        )
         _draw_shadow(draw, world_points, camera, width, height, scale, center)
 
     surfaces_to_draw = []
-    for body_index, projected, _world_points in projected_bodies:
+    for (
+        body_index,
+        projected,
+        _world_points,
+        world_normals,
+        top_surface_index,
+    ) in projected_bodies:
         for surface_index, surface in enumerate(mesh.render_faces):
             pts = projected[list(surface)]
             depth = float(pts[:, 2].mean())
-            surfaces_to_draw.append((depth, body_index, surface_index, surface, pts))
+            world_normal_z = (
+                float(world_normals[surface_index, 2])
+                if surface_index < len(world_normals)
+                else 0.0
+            )
+            surfaces_to_draw.append(
+                (
+                    depth,
+                    body_index,
+                    surface_index,
+                    surface,
+                    pts,
+                    world_normal_z,
+                    surface_index == top_surface_index,
+                )
+            )
     surfaces_to_draw.sort(key=lambda item: item[0])
 
     base_color = np.asarray(_hex(style.die_color), dtype=float)
     ink_color = _hex(style.ink_color)
     edge_color = _hex(style.edge_color)
-    font = _font(max(12, min(width, height) // 20))
     light = np.array([0.2, -0.45, 0.87], dtype=float)
     light /= np.linalg.norm(light)
+    number_decals: list[tuple[np.ndarray, str]] = []
 
-    for _depth, _body_index, surface_index, surface, pts in surfaces_to_draw:
-        if _polygon_area(pts[:, :2]) <= 1:
+    for (
+        _depth,
+        _body_index,
+        surface_index,
+        surface,
+        pts,
+        _world_normal_z,
+        is_top_surface,
+    ) in surfaces_to_draw:
+        polygon_points = pts[:, :2]
+        if _polygon_area(polygon_points) <= 1:
             continue
         normal = _surface_camera_normal(pts)
         shade = 0.72 + 0.28 * max(0.0, float(np.dot(normal, light)))
         color = tuple(int(np.clip(channel * shade, 0, 255)) for channel in base_color)
-        polygon = [tuple(point) for point in pts[:, :2]]
-        draw.polygon(polygon, fill=color, outline=edge_color)
-        if normal[2] > 0.12 and surface_index < len(mesh.result_values):
-            face_center = pts[:, :2].mean(axis=0)
-            text = str(mesh.result_values[surface_index])
-            bbox = draw.textbbox((0, 0), text, font=font)
-            draw.text(
-                (
-                    face_center[0] - (bbox[2] - bbox[0]) / 2,
-                    face_center[1] - (bbox[3] - bbox[1]) / 2,
-                ),
-                text,
-                fill=ink_color,
-                font=font,
+        polygon = [tuple(point) for point in polygon_points]
+        draw.polygon(polygon, fill=color)
+        draw.line(polygon + [polygon[0]], fill=edge_color, width=2)
+        if (
+            is_top_surface
+            and normal[2] > 0.08
+            and surface_index < len(mesh.result_values)
+        ):
+            value = mesh.result_values[surface_index]
+            if (
+                mesh.dice_type == "D4"
+                and show_result_label
+                and _body_index < len(final_values)
+            ):
+                value = final_values[_body_index]
+            number_decals.append(
+                (polygon_points.copy(), str(value))
             )
+
+    for polygon_points, text in number_decals:
+        _draw_face_number(image, polygon_points, text, ink_color)
 
     if show_result_label:
         label_font = _font(max(13, min(width, height) // 22))
@@ -153,7 +193,7 @@ def _scene_view(
     x_span = float(np.ptp(combined[:, 0]))
     y_span = float(np.ptp(combined[:, 1]))
     span = max(3.0, x_span, y_span * 1.15)
-    scale = min(width, height) * 0.58 / span
+    scale = min(width, height) * 0.70 / span
     center = np.array(
         [
             (combined[:, 0].min() + combined[:, 0].max()) / 2,
@@ -165,23 +205,27 @@ def _scene_view(
 
 
 def _camera_matrix() -> np.ndarray:
-    yaw = math.radians(38)
-    pitch = math.radians(28)
-    yaw_matrix = np.array(
+    yaw = math.radians(28)
+    tilt = math.radians(54)
+    right = np.array([math.cos(yaw), math.sin(yaw), 0.0], dtype=float)
+    ground_forward = np.array([-math.sin(yaw), math.cos(yaw), 0.0], dtype=float)
+    screen_up = np.array(
         [
-            [math.cos(yaw), 0, math.sin(yaw)],
-            [0, 1, 0],
-            [-math.sin(yaw), 0, math.cos(yaw)],
-        ]
+            -ground_forward[0] * math.sin(tilt),
+            -ground_forward[1] * math.sin(tilt),
+            math.cos(tilt),
+        ],
+        dtype=float,
     )
-    pitch_matrix = np.array(
+    depth = np.array(
         [
-            [1, 0, 0],
-            [0, math.cos(pitch), -math.sin(pitch)],
-            [0, math.sin(pitch), math.cos(pitch)],
-        ]
+            ground_forward[0] * math.cos(tilt),
+            ground_forward[1] * math.cos(tilt),
+            math.sin(tilt),
+        ],
+        dtype=float,
     )
-    return pitch_matrix @ yaw_matrix
+    return np.vstack([right, screen_up, depth])
 
 
 def _draw_ground(
@@ -223,6 +267,77 @@ def _draw_shadow(
     rx = max(14, (max_x - min_x) * 0.45)
     ry = max(5, (max_y - min_y) * 0.11)
     draw.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=(183, 190, 202))
+
+
+def _draw_face_number(
+    image: Image.Image,
+    points: np.ndarray,
+    text: str,
+    ink_color: tuple[int, int, int],
+) -> None:
+    area = _polygon_area(points)
+    if area < 24:
+        return
+    edge_vectors = [
+        points[(idx + 1) % len(points)] - points[idx] for idx in range(len(points))
+    ]
+    edge = max(edge_vectors, key=lambda vector: float(np.linalg.norm(vector)))
+    edge_length = float(np.linalg.norm(edge))
+    if edge_length < 8:
+        return
+
+    angle = math.degrees(math.atan2(float(edge[1]), float(edge[0])))
+    while angle <= -90:
+        angle += 180
+    while angle > 90:
+        angle -= 180
+    if area < 180:
+        angle = 0
+
+    text_scale = 0.72 if len(text) == 1 else 0.58
+    edge_scale = 0.70 if len(text) == 1 else 0.58
+    minimum_size = 14 if len(text) == 1 else 12
+    size = int(
+        max(
+            minimum_size,
+            min(36, math.sqrt(area) * text_scale, edge_length * edge_scale),
+        )
+    )
+    font = _font(size)
+    probe = Image.new("L", (1, 1))
+    probe_draw = ImageDraw.Draw(probe)
+    bbox = probe_draw.textbbox((0, 0), text, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+    if text_width <= 0 or text_height <= 0:
+        return
+
+    padding = max(3, size // 4)
+    tile = Image.new(
+        "RGBA",
+        (text_width + padding * 2, text_height + padding * 2),
+        (255, 255, 255, 0),
+    )
+    tile_draw = ImageDraw.Draw(tile)
+    tile_draw.text(
+        (padding - bbox[0], padding - bbox[1]),
+        text,
+        font=font,
+        fill=(*ink_color, 255),
+        stroke_width=max(1, size // 9),
+        stroke_fill=(255, 255, 255, 255),
+    )
+    try:
+        resample = Image.Resampling.BICUBIC
+    except AttributeError:
+        resample = Image.BICUBIC
+    rotated = tile.rotate(angle, resample=resample, expand=True)
+    center = points.mean(axis=0)
+    paste_at = (
+        int(round(float(center[0]) - rotated.width / 2)),
+        int(round(float(center[1]) - rotated.height / 2)),
+    )
+    image.paste(rotated, paste_at, rotated)
 
 
 def _project_world(
@@ -289,7 +404,9 @@ def _hex(value: str) -> tuple[int, int, int]:
 
 
 def _font(size: int) -> ImageFont.ImageFont:
-    try:
-        return ImageFont.truetype("arial.ttf", size=size)
-    except Exception:
-        return ImageFont.load_default()
+    for font_name in ("arialbd.ttf", "arial.ttf"):
+        try:
+            return ImageFont.truetype(font_name, size=size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
