@@ -19,7 +19,8 @@ def main() -> int:
             "name": "classic_white_d6",
             "dice_type": "D6",
             "count": 1,
-            "seed": 320601,
+            "seed": 350234,
+            "fps": 60,
             "style": StyleOptions(
                 die_color="#ffffff",
                 ink_color="#000000",
@@ -31,7 +32,8 @@ def main() -> int:
             "name": "six_white_d6_collision",
             "dice_type": "D6",
             "count": 6,
-            "seed": 320606,
+            "seed": 350234,
+            "fps": 60,
             "style": StyleOptions(
                 die_color="#ffffff",
                 ink_color="#000000",
@@ -43,7 +45,7 @@ def main() -> int:
             "name": "ice_blue_d20",
             "dice_type": "D20",
             "count": 1,
-            "seed": 320620,
+            "seed": 350234,
             "style": StyleOptions(
                 die_color="#dff3ff",
                 ink_color="#07131f",
@@ -55,7 +57,7 @@ def main() -> int:
             "name": "mint_green_3d8",
             "dice_type": "D8",
             "count": 3,
-            "seed": 320803,
+            "seed": 350234,
             "style": StyleOptions(
                 die_color="#d7f7df",
                 ink_color="#102017",
@@ -67,7 +69,7 @@ def main() -> int:
             "name": "rose_2d10",
             "dice_type": "D10",
             "count": 2,
-            "seed": 321002,
+            "seed": 350234,
             "style": StyleOptions(
                 die_color="#ffdce5",
                 ink_color="#230811",
@@ -79,7 +81,7 @@ def main() -> int:
             "name": "charcoal_gold_d4",
             "dice_type": "D4",
             "count": 1,
-            "seed": 320404,
+            "seed": 350234,
             "style": StyleOptions(
                 die_color="#2b2f33",
                 ink_color="#ffd45a",
@@ -101,7 +103,7 @@ def main() -> int:
                 seed=job["seed"],
                 width=840,
                 height=600,
-                fps=12,
+                fps=job.get("fps", 12),
                 duration_ms=5000,
                 final_hold_ms=3000,
                 style=job["style"],

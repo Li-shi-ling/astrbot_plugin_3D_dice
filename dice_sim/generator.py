@@ -55,7 +55,7 @@ def roll_gif_with_options(options: RollOptions) -> RollGifResult:
     count = _clamp_int(options.count, 1, 6)
     width = _clamp_int(options.width, 240, 1024)
     height = _clamp_int(options.height, 240, 1024)
-    fps = _clamp_int(options.fps, 4, 30)
+    fps = _clamp_int(options.fps, 4, 60)
     duration_ms = _clamp_int(options.duration_ms, 1500, 10000)
     final_hold_ms = _clamp_int(options.final_hold_ms, 3000, 5000)
     seed = int(options.seed if options.seed is not None else random.SystemRandom().randrange(1, 2**31))

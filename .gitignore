@@ -10,8 +10,8 @@ venv/
 .pipeline-workspace/
 outputs/
 cache/
+text_live/benchmarks/
 *.gif
 
 *.log
 *.tmp
-
