@@ -23,7 +23,9 @@ THROW_START_Y = -2.35
 THROW_START_Z = 2.55
 MULTI_DICE_COLUMN_GAP = 2.45
 MULTI_DICE_ROW_GAP = 2.55
-D6_TUMBLE_SPEED_RANGE = (13.0, 18.0)
+D6_PRIMARY_TUMBLE_SPEED_RANGE = (15.0, 20.0)
+D6_SECONDARY_TUMBLE_SPEED_RANGE = (5.0, 9.0)
+D6_YAW_SPIN_SPEED_RANGE = (3.0, 6.0)
 
 
 def simulate_roll(
@@ -119,7 +121,9 @@ def simulate_roll(
             p.resetBaseVelocity(
                 body,
                 linearVelocity=linear_velocity,
-                angularVelocity=_initial_angular_velocity(mesh, linear_velocity, rng),
+                angularVelocity=_initial_angular_velocity(
+                    mesh, count, linear_velocity, rng
+                ),
                 physicsClientId=client,
             )
             bodies.append(body)
@@ -275,7 +279,7 @@ def _initial_linear_velocity(
 
 
 def _initial_angular_velocity(
-    mesh: MeshData, linear_velocity: list[float], rng: random.Random
+    mesh: MeshData, count: int, linear_velocity: list[float], rng: random.Random
 ) -> list[float]:
     if mesh.dice_type != "D6":
         return [
@@ -297,10 +301,30 @@ def _initial_angular_velocity(
     else:
         roll_axis /= roll_axis_norm
 
-    tumble = roll_axis * rng.choice((-1.0, 1.0)) * rng.uniform(*D6_TUMBLE_SPEED_RANGE)
-    side_roll = travel * rng.uniform(-3.5, 3.5)
-    yaw = np.array([0.0, 0.0, rng.uniform(-2.5, 2.5)], dtype=float)
-    angular = tumble + side_roll + yaw
+    if count > 1:
+        primary_tumble = (
+            roll_axis * rng.choice((-1.0, 1.0)) * rng.uniform(12.0, 16.0)
+        )
+        secondary_tumble = travel * rng.uniform(-3.0, 3.0)
+        yaw_spin = np.array([0.0, 0.0, rng.uniform(-2.0, 2.0)], dtype=float)
+        angular = primary_tumble + secondary_tumble + yaw_spin
+        return [float(component) for component in angular]
+
+    primary_speed = rng.uniform(*D6_PRIMARY_TUMBLE_SPEED_RANGE)
+    secondary_speed = rng.uniform(*D6_SECONDARY_TUMBLE_SPEED_RANGE)
+    yaw_speed = rng.uniform(*D6_YAW_SPIN_SPEED_RANGE)
+
+    primary_tumble = roll_axis * rng.choice((-1.0, 1.0)) * primary_speed
+    secondary_tumble = travel * rng.choice((-1.0, 1.0)) * secondary_speed
+    yaw_spin = np.array(
+        [
+            0.0,
+            0.0,
+            rng.choice((-1.0, 1.0)) * yaw_speed,
+        ],
+        dtype=float,
+    )
+    angular = primary_tumble + secondary_tumble + yaw_spin
     return [float(component) for component in angular]
 
 
