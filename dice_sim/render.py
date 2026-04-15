@@ -107,7 +107,7 @@ def _render_one(
     light /= np.linalg.norm(light)
     d4_vertex_values = _d4_vertex_values(mesh) if mesh.dice_type == "D4" else {}
     number_decals: list[tuple[np.ndarray, str]] = []
-    d4_tip_decals: list[tuple[np.ndarray, str, float, bool]] = []
+    d4_face_decals: list[tuple[np.ndarray, tuple[int, ...], int]] = []
 
     for (
         _depth,
@@ -129,20 +129,9 @@ def _render_one(
         if mesh.dice_type == "D4":
             show_d4_labels = normal[2] > 0.08 or top_vertex in surface
             if show_d4_labels and surface_index < len(mesh.result_values):
-                face_center = polygon_points.mean(axis=0)
-                area = _polygon_area(polygon_points)
-                for vertex_index, point in zip(surface, polygon_points):
-                    value = d4_vertex_values.get(vertex_index)
-                    if value is None:
-                        continue
-                    is_top_vertex = vertex_index == top_vertex
-                    vertex_weight = 0.46 if is_top_vertex else 0.74
-                    label_position = (
-                        face_center * (1.0 - vertex_weight) + point * vertex_weight
-                    )
-                    d4_tip_decals.append(
-                        (label_position, str(value), area, is_top_vertex)
-                    )
+                d4_face_decals.append(
+                    (polygon_points.copy(), tuple(surface), top_vertex)
+                )
         elif normal[2] > 0.08 and surface_index < len(mesh.result_values):
             number_decals.append(
                 (polygon_points.copy(), str(mesh.result_values[surface_index]))
@@ -150,9 +139,15 @@ def _render_one(
 
     for polygon_points, text in number_decals:
         _draw_face_number(image, polygon_points, text, ink_color)
-    d4_tip_decals.sort(key=lambda item: (not item[3], item[0][1]))
-    for center, text, area, is_top_vertex in d4_tip_decals:
-        _draw_d4_tip_number(image, center, text, ink_color, area, is_top_vertex)
+    for polygon_points, surface, top_vertex in d4_face_decals:
+        _draw_d4_face_numbers(
+            image,
+            polygon_points,
+            surface,
+            top_vertex,
+            d4_vertex_values,
+            ink_color,
+        )
 
     if show_result_label:
         label_font = _font(max(13, min(width, height) // 22))
@@ -309,37 +304,39 @@ def _draw_face_number(
     _draw_textured_polygon(image, points, source_polygon, texture)
 
 
-def _draw_d4_tip_number(
+def _draw_d4_face_numbers(
     image: Image.Image,
-    center: np.ndarray,
-    text: str,
+    points: np.ndarray,
+    surface: tuple[int, ...],
+    top_vertex: int,
+    vertex_values: dict[int, int],
     ink_color: tuple[int, int, int],
-    face_area: float,
-    is_top_vertex: bool,
 ) -> None:
-    if face_area < 18:
+    area = _polygon_area(points)
+    if area < 18:
         return
-    size = int(max(14, min(30, math.sqrt(face_area) * 0.62)))
-    if is_top_vertex:
-        size += 2
-    draw = ImageDraw.Draw(image)
-    font = _texture_font(size)
-    bbox = draw.textbbox((0, 0), text, font=font)
-    text_width = bbox[2] - bbox[0]
-    text_height = bbox[3] - bbox[1]
-    if text_width <= 0 or text_height <= 0:
+    texture_size = 384
+    source_polygon = _texture_polygon(len(points), texture_size)
+    face_center = source_polygon.mean(axis=0)
+    labels = []
+    for vertex_index, source_point in zip(surface, source_polygon):
+        value = vertex_values.get(vertex_index)
+        if value is None:
+            continue
+        vertex_weight = 0.48 if vertex_index == top_vertex else 0.72
+        label_position = (
+            face_center * (1.0 - vertex_weight) + source_point * vertex_weight
+        )
+        labels.append((str(value), tuple(float(coord) for coord in label_position)))
+    if not labels:
         return
-    draw.text(
-        (
-            float(center[0]) - text_width / 2 - bbox[0],
-            float(center[1]) - text_height / 2 - bbox[1],
-        ),
-        text,
-        font=font,
-        fill=ink_color,
-        stroke_width=max(1, size // 10),
-        stroke_fill=(255, 255, 255),
+    texture = _labeled_face_texture(
+        tuple(labels),
+        ink_color,
+        texture_size,
+        int(texture_size * 0.24),
     )
+    _draw_textured_polygon(image, points, source_polygon, texture)
 
 
 def _draw_textured_polygon(
@@ -431,10 +428,11 @@ def _face_number_texture(
     ink_color: tuple[int, int, int],
     texture_size: int,
 ) -> Image.Image:
-    center = (texture_size / 2, texture_size / 2)
     if point_count == 3:
+        center = (texture_size / 2, texture_size * 0.60)
         font_size = int(texture_size * (0.34 if len(text) == 1 else 0.27))
     else:
+        center = (texture_size / 2, texture_size / 2)
         font_size = int(texture_size * (0.46 if len(text) == 1 else 0.34))
     return _labeled_face_texture(((text, center),), ink_color, texture_size, font_size)
 
