@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageSequence
 
 from dice_sim import SUPPORTED_DICE_TYPES, roll_gif
 
@@ -30,6 +30,7 @@ def test_roll_gif_writes_animated_file_for_supported_dice(tmp_path, dice_type: s
     assert result.metadata["final_hold_ms"] == 3000
     assert result.metadata["result_label_start_ms"] is not None
     assert result.metadata["result_label_start_ms"] >= result.metadata["settle_time_ms"]
+    assert result.metadata["result_visible_ms"] >= result.metadata["final_hold_ms"]
     assert (
         result.metadata["actual_duration_ms"]
         >= result.metadata["result_label_start_ms"] + result.metadata["final_hold_ms"]
@@ -41,6 +42,13 @@ def test_roll_gif_writes_animated_file_for_supported_dice(tmp_path, dice_type: s
     assert result.metadata["max_height"] > 2.8
     with Image.open(result.gif_path) as image:
         assert getattr(image, "n_frames", 1) > 1
+        encoded_duration_ms = sum(
+            frame.info.get("duration", 0) for frame in ImageSequence.Iterator(image)
+        )
+        minimum_visible_end_ms = (
+            result.metadata["result_label_start_ms"] + result.metadata["final_hold_ms"]
+        )
+        assert encoded_duration_ms >= minimum_visible_end_ms
 
 
 @pytest.mark.skipif(

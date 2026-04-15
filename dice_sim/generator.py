@@ -108,9 +108,7 @@ def roll_gif_with_options(options: RollOptions) -> RollGifResult:
                 if simulation.settle_time_seconds is None
                 else int(round(simulation.settle_time_seconds * 1000))
             ),
-            "result_label_start_ms": (
-                result_label_start_ms
-            ),
+            "result_label_start_ms": result_label_start_ms,
             "result_visible_ms": (
                 None
                 if result_label_start_ms is None
