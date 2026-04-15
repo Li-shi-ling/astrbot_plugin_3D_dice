@@ -1,0 +1,92 @@
+from __future__ import annotations
+
+import random
+from pathlib import Path
+
+from .cache import build_output_path, cleanup_cache
+from .errors import UnsupportedDiceError
+from .geometry import SUPPORTED_DICE_TYPES, create_mesh
+from .gif import encode_gif
+from .physics import simulate_roll
+from .render import render_frames
+from .result import detect_result
+from .types import RollGifResult, RollOptions, StyleOptions
+
+
+def roll_gif(
+    dice_type: str,
+    *,
+    count: int = 1,
+    output_dir: Path | str | None = None,
+    output_path: Path | str | None = None,
+    seed: int | None = None,
+    width: int = 480,
+    height: int = 360,
+    fps: int = 12,
+    duration_ms: int = 2200,
+    style: StyleOptions | None = None,
+    max_cache_files: int = 80,
+    cache_max_age_seconds: int = 604800,
+) -> RollGifResult:
+    options = RollOptions(
+        dice_type=dice_type,
+        count=count,
+        output_dir=output_dir,
+        output_path=output_path,
+        seed=seed,
+        width=width,
+        height=height,
+        fps=fps,
+        duration_ms=duration_ms,
+        style=style or StyleOptions(),
+        max_cache_files=max_cache_files,
+        cache_max_age_seconds=cache_max_age_seconds,
+    )
+    return roll_gif_with_options(options)
+
+
+def roll_gif_with_options(options: RollOptions) -> RollGifResult:
+    dice_type = str(options.dice_type or "").strip().upper()
+    if dice_type not in SUPPORTED_DICE_TYPES:
+        supported = ", ".join(SUPPORTED_DICE_TYPES)
+        raise UnsupportedDiceError(f"Unsupported dice type {dice_type!r}. Supported: {supported}.")
+    count = _clamp_int(options.count, 1, 6)
+    width = _clamp_int(options.width, 240, 1024)
+    height = _clamp_int(options.height, 240, 1024)
+    fps = _clamp_int(options.fps, 4, 30)
+    duration_ms = _clamp_int(options.duration_ms, 800, 6000)
+    seed = int(options.seed if options.seed is not None else random.SystemRandom().randrange(1, 2**31))
+
+    mesh = create_mesh(dice_type)
+    simulation = simulate_roll(mesh, count, seed, duration_ms, fps)
+    values = tuple(detect_result(mesh, pose) for pose in simulation.final_poses)
+    frames = render_frames(mesh, simulation.frames, width, height, options.style, values)
+    output_path = build_output_path(options.output_dir, dice_type, seed, options.output_path)
+    encoded_path = encode_gif(frames, output_path, fps)
+    cleanup_cache(options.output_dir, options.max_cache_files, options.cache_max_age_seconds)
+    return RollGifResult(
+        gif_path=encoded_path,
+        dice_type=dice_type,
+        dice_count=count,
+        results=values,
+        total=sum(values),
+        seed=seed,
+        width=width,
+        height=height,
+        fps=fps,
+        duration_ms=duration_ms,
+        metadata={
+            "frames": len(frames),
+            "result_rule": mesh.result_rule,
+            "renderer": "pillow-software",
+            "physics": "pybullet-direct",
+        },
+    )
+
+
+def _clamp_int(value: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = minimum
+    return max(minimum, min(parsed, maximum))

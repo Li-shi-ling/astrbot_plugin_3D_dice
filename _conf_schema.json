@@ -3,102 +3,63 @@
     "description": "默认骰子类型",
     "type": "string",
     "default": "D6",
-    "options": ["D4", "D6", "D8", "D20"]
+    "options": ["D4", "D6", "D8", "D10", "D20"]
   },
   "default_count": {
     "description": "默认骰子数量",
     "type": "int",
     "default": 1,
-    "hint": "3D 骰子页面一次最多支持 1 到 6 个骰子"
+    "hint": "一次建议 1 到 3 个骰子，最多 6 个"
   },
   "max_count": {
     "description": "允许用户一次投掷的最大骰子数量",
     "type": "int",
-    "default": 6,
-    "hint": "最大为 6；超过 6 会被限制为 6"
+    "default": 3,
+    "hint": "最大会被限制为 6"
   },
-  "duration": {
-    "description": "GIF 录制时长，单位毫秒",
+  "duration_ms": {
+    "description": "GIF 动画时长，单位毫秒",
     "type": "int",
-    "default": 1200
+    "default": 2200
   },
   "fps": {
     "description": "GIF 帧率",
     "type": "int",
-    "default": 8
-  },
-  "browser": {
-    "description": "可选的 Chromium、Chrome 或 Edge 浏览器可执行文件路径",
-    "type": "string",
-    "default": "",
-    "hint": "留空时自动检测系统浏览器或 Playwright Chromium"
-  },
-  "gif_backend": {
-    "description": "GIF 生成方式",
-    "type": "string",
-    "default": "cdp_screencast_limited",
-    "options": ["screenshot", "webm_ffmpeg", "cdp_screencast", "cdp_screencast_limited", "cdp_screencast_ffmpeg"],
-    "hint": "screenshot 为逐帧截图方案；webm_ffmpeg 会先录制 WebM，再用 ffmpeg 转换为 GIF；cdp_screencast 使用 Chromium DevTools 录屏帧生成 GIF；limited 会按时间戳限帧；ffmpeg 会边收帧边写入 ffmpeg"
-  },
-  "screencast_quality": {
-    "description": "CDP 录屏帧 JPEG 质量",
-    "type": "int",
-    "default": 80,
-    "hint": "仅 cdp_screencast 系列后端使用；建议 70 到 85，数值越低帧数据越小"
-  },
-  "ffmpeg_path": {
-    "description": "ffmpeg 可执行文件路径",
-    "type": "string",
-    "default": "",
-    "hint": "使用 webm_ffmpeg 时需要；留空时从 PATH 或 FFMPEG_BINARY 环境变量查找"
-  },
-  "auto_install_chromium": {
-    "description": "找不到浏览器时是否自动安装 Playwright Chromium",
-    "type": "bool",
-    "default": true,
-    "hint": "需要先安装 playwright Python 包；插件初始化时不会安装，首次投骰子且找不到浏览器时才会执行 python -m playwright install chromium"
-  },
-  "better_render_quality": {
-    "description": "是否启用更好的 GIF 渲染质量",
-    "type": "bool",
-    "default": false,
-    "hint": "启用后会等待 3D 场景稳定，再点击 Roll 并开始录制"
-  },
-  "prewarm_render_worker": {
-    "description": "启动插件时是否预热渲染进程",
-    "type": "bool",
-    "default": true,
-    "hint": "启用后会在插件初始化时提前启动已有浏览器并加载骰子页面；如果找不到浏览器，会跳过预热，不会在初始化时安装 Chromium"
+    "default": 12
   },
   "width": {
-    "description": "浏览器渲染视口宽度",
+    "description": "GIF 宽度",
     "type": "int",
-    "default": 640,
-    "hint": "建议不低于 600；过小可能裁切骰子画面"
+    "default": 480
   },
   "height": {
-    "description": "浏览器渲染视口高度",
+    "description": "GIF 高度",
     "type": "int",
-    "default": 960,
-    "hint": "建议不低于 800；过小可能裁切 canvas 或 GIF 画面"
+    "default": 360
   },
-  "parallel_result": {
-    "description": "是否启用更快的结果读取模式",
-    "type": "bool",
-    "default": true,
-    "hint": "启用后在 GIF 捕获完成后立即读取页面结果，可略微减少等待时间"
-  },
-  "result_timeout_ms": {
-    "description": "结果读取最长等待时间（毫秒）",
-    "type": "int",
-    "default": 8000,
-    "hint": "只影响 result_mode 为 physical 的情况；设置为 0 会直接走超时 fallback"
-  },
-  "result_mode": {
-    "description": "结果读取模式",
+  "seed": {
+    "description": "可选默认随机种子，留空则每次随机",
     "type": "string",
-    "default": "physical",
-    "options": ["physical", "fast"],
-    "hint": "physical 会等待骰子物理停止并读取真实结果；fast 会立即读取一次结果，拿不到就使用随机 fallback"
+    "default": ""
+  },
+  "die_color": {
+    "description": "骰子颜色，十六进制 RGB",
+    "type": "string",
+    "default": "#d83a34"
+  },
+  "background_color": {
+    "description": "背景颜色，十六进制 RGB",
+    "type": "string",
+    "default": "#f5f7fb"
+  },
+  "max_cache_files": {
+    "description": "输出目录保留的 GIF 文件数量",
+    "type": "int",
+    "default": 80
+  },
+  "cache_max_age_seconds": {
+    "description": "输出 GIF 最大保留秒数，0 表示不按时间清理",
+    "type": "int",
+    "default": 604800
   }
 }

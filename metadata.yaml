@@ -1,6 +1,6 @@
 name: astrbot_plugin_3D_dice
 display_name: 3D Dice
-desc: 掷出3D动态骰子并以GIF格式返回结果。
-version: v1.0.0
+desc: 使用 Python 物理仿真生成 D4/D6/D8/D10/D20 动态骰子 GIF。
+version: v2.0.0
 author: Lishining
 repo: https://github.com/Li-shi-ling/astrbot_plugin_3D_dice
