@@ -10,7 +10,7 @@ from .errors import MissingDependencyError, SimulationError
 from .result import quaternion_to_matrix
 from .types import BodyPose, MeshData, SimulationFrame, SimulationResult
 
-PHYSICS_HZ = 240
+PHYSICS_HZ = 600
 QUIET_LINEAR_SPEED = 0.12
 QUIET_ANGULAR_SPEED = 0.25
 QUIET_HOLD_SECONDS = 0.25
@@ -24,8 +24,8 @@ THROW_START_Z = 2.55
 MULTI_DICE_COLUMN_GAP = 2.45
 MULTI_DICE_ROW_GAP = 2.55
 D6_PRIMARY_TUMBLE_SPEED_RANGE = (3.6, 4.8)
-D6_SECONDARY_TUMBLE_SPEED_RANGE = (0.0, 0.04)
-D6_YAW_SPIN_SPEED_RANGE = (0.0, 0.02)
+D6_SECONDARY_TUMBLE_RATIO = 0.5
+D6_YAW_SPIN_RATIO = 0.5
 
 
 def simulate_roll(
@@ -335,8 +335,8 @@ def _initial_angular_velocity(
         return [float(component) for component in angular]
 
     primary_speed = rng.uniform(*D6_PRIMARY_TUMBLE_SPEED_RANGE)
-    secondary_speed = rng.uniform(*D6_SECONDARY_TUMBLE_SPEED_RANGE)
-    yaw_speed = rng.uniform(*D6_YAW_SPIN_SPEED_RANGE)
+    secondary_speed = primary_speed * D6_SECONDARY_TUMBLE_RATIO
+    yaw_speed = primary_speed * D6_YAW_SPIN_RATIO
 
     primary_tumble = roll_axis * rng.choice((-1.0, 1.0)) * primary_speed
     secondary_tumble = travel * rng.choice((-1.0, 1.0)) * secondary_speed
@@ -423,7 +423,7 @@ def _capture_until_settled(
     p: Any, client: int, bodies: list[int], duration_ms: int, fps: int
 ) -> tuple[list[SimulationFrame], bool, float | None, int, int]:
     max_steps = max(1, int(PHYSICS_HZ * duration_ms / 1000))
-    capture_interval = max(1, int(PHYSICS_HZ / max(1, fps)))
+    capture_interval = capture_interval_steps(fps)
     quiet_hold_steps = max(1, int(QUIET_HOLD_SECONDS * PHYSICS_HZ))
     post_settle_hold_steps = max(
         capture_interval, int(POST_SETTLE_HOLD_SECONDS * PHYSICS_HZ)
@@ -743,3 +743,7 @@ def _load_pybullet() -> Any:
             "Install plugin requirements with: pip install -r requirements.txt"
         ) from exc
     return p
+
+
+def capture_interval_steps(fps: int) -> int:
+    return max(1, int(round(PHYSICS_HZ / max(1, fps))))

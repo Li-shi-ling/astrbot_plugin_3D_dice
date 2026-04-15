@@ -20,7 +20,7 @@ def main() -> int:
             "dice_type": "D6",
             "count": 1,
             "seed": 350234,
-            "fps": 60,
+            "fps": 100,
             "style": StyleOptions(
                 die_color="#ffffff",
                 ink_color="#000000",
@@ -33,7 +33,7 @@ def main() -> int:
             "dice_type": "D6",
             "count": 6,
             "seed": 350234,
-            "fps": 60,
+            "fps": 100,
             "style": StyleOptions(
                 die_color="#ffffff",
                 ink_color="#000000",
@@ -103,7 +103,7 @@ def main() -> int:
                 seed=job["seed"],
                 width=840,
                 height=600,
-                fps=job.get("fps", 12),
+                fps=job.get("fps", 100),
                 duration_ms=5000,
                 final_hold_ms=3000,
                 style=job["style"],

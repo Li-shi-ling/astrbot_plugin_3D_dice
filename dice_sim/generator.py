@@ -6,8 +6,8 @@ from pathlib import Path
 from .cache import build_output_path, cleanup_cache
 from .errors import SimulationError, UnsupportedDiceError
 from .geometry import SUPPORTED_DICE_TYPES, create_mesh
-from .gif import encode_gif
-from .physics import simulate_roll
+from .gif import encode_gif, frame_duration_ms_for_fps
+from .physics import PHYSICS_HZ, capture_interval_steps, simulate_roll
 from .render import render_frames
 from .result import detect_result
 from .types import RollGifResult, RollOptions, StyleOptions
@@ -55,7 +55,7 @@ def roll_gif_with_options(options: RollOptions) -> RollGifResult:
     count = _clamp_int(options.count, 1, 6)
     width = _clamp_int(options.width, 240, 1024)
     height = _clamp_int(options.height, 240, 1024)
-    fps = _clamp_int(options.fps, 4, 60)
+    fps = _clamp_int(options.fps, 4, 100)
     duration_ms = _clamp_int(options.duration_ms, 1500, 10000)
     final_hold_ms = _clamp_int(options.final_hold_ms, 3000, 5000)
     seed = int(options.seed if options.seed is not None else random.SystemRandom().randrange(1, 2**31))
@@ -102,6 +102,9 @@ def roll_gif_with_options(options: RollOptions) -> RollGifResult:
             "frames": len(frames),
             "actual_duration_ms": actual_duration_ms,
             "final_hold_ms": final_hold_ms,
+            "physics_hz": PHYSICS_HZ,
+            "capture_interval_steps": capture_interval_steps(fps),
+            "gif_frame_duration_ms": frame_duration_ms_for_fps(fps),
             "settled": simulation.settled,
             "settle_time_ms": (
                 None

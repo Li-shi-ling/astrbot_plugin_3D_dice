@@ -9,6 +9,10 @@ from PIL import Image, ImageSequence
 from .errors import GifEncodeError, MissingDependencyError
 
 
+def frame_duration_ms_for_fps(fps: int) -> int:
+    return max(10, int(math.ceil((1000 / max(1, fps)) / 10.0) * 10))
+
+
 def encode_gif(frames: list[Image.Image], output_path: Path, fps: int) -> Path:
     if len(frames) < 2:
         raise GifEncodeError("Animated GIF requires at least two frames.")
@@ -21,9 +25,7 @@ def encode_gif(frames: list[Image.Image], output_path: Path, fps: int) -> Path:
 
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        frame_duration_ms = max(
-            20, int(math.ceil((1000 / max(1, fps)) / 10.0) * 10)
-        )
+        frame_duration_ms = frame_duration_ms_for_fps(fps)
         with imageio.get_writer(
             output_path,
             mode="I",

@@ -38,7 +38,7 @@ def main() -> int:
     )
     width = _int_env("DICE_BENCH_WIDTH", 840)
     height = _int_env("DICE_BENCH_HEIGHT", 600)
-    fps = _int_env("DICE_BENCH_FPS", 12)
+    fps = _int_env("DICE_BENCH_FPS", 100)
     duration_ms = _int_env("DICE_BENCH_DURATION_MS", 5000)
     final_hold_ms = _int_env("DICE_BENCH_FINAL_HOLD_MS", 3000)
     save_gifs = _bool_env("DICE_BENCH_SAVE_GIFS", True)
