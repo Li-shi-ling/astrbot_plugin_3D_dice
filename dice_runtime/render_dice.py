@@ -289,6 +289,8 @@ def render_dice_gif(
     screencast_quality: int = 80,
     better_render_quality: bool = True,
     parallel_result: bool = False,
+    result_timeout_ms: int = DEFAULT_RESULT_TIMEOUT_MS,
+    result_mode: str = "physical",
 ) -> dict[str, Any]:
     return _render_dice_gif_worker(
         dice_type=dice_type,
@@ -306,6 +308,8 @@ def render_dice_gif(
         screencast_quality=screencast_quality,
         better_render_quality=better_render_quality,
         parallel_result=parallel_result,
+        result_timeout_ms=result_timeout_ms,
+        result_mode=result_mode,
     )
 
 
@@ -564,6 +568,8 @@ def _render_dice_gif_impl(
     screencast_quality: int = 80,
     better_render_quality: bool = True,
     parallel_result: bool = False,
+    result_timeout_ms: int = DEFAULT_RESULT_TIMEOUT_MS,
+    result_mode: str = "physical",
 ) -> dict[str, Any]:
     """Render a dice GIF and return the parsed roll result.
 
@@ -689,11 +695,15 @@ def _render_dice_gif_impl(
                 frames = capture_frames(page, clip, total_frames, frame_delay)
                 write_gif(frames, output_path, frame_delay)
 
-            if parallel_result:
-                result = read_roll_results(page, count, dice_type)
-            else:
+            if not parallel_result:
                 page.wait_for_timeout(max(2500, duration))
-                result = read_roll_results(page, count, dice_type)
+            result = resolve_roll_results(
+                page=page,
+                dice_count=count,
+                dice_type=dice_type,
+                result_mode=result_mode,
+                result_timeout_ms=result_timeout_ms,
+            )
 
         except Exception:
             # Rebuild the persistent page on the next request after any page error.
@@ -1597,6 +1607,29 @@ def read_roll_results(
         "Could not parse dice results from page. "
         f"numeric={snapshot.get('numericCandidates', [])[:5]!r}, "
         f"breakdown={snapshot.get('breakdownCandidates', [])[:5]!r}"
+    )
+
+
+def resolve_roll_results(
+    page: Any,
+    dice_count: int,
+    dice_type: str,
+    result_mode: str,
+    result_timeout_ms: int,
+) -> dict[str, Any]:
+    mode = str(result_mode or "physical").strip().lower()
+    if mode == "fast":
+        snapshot = read_roll_result_snapshot(page)
+        parsed = parse_roll_result_snapshot(snapshot, dice_count, dice_type)
+        if parsed:
+            return parsed
+        return make_fallback_roll_result(dice_count, dice_type)
+    return read_roll_results(
+        page,
+        dice_count,
+        dice_type,
+        timeout_ms=result_timeout_ms,
+        fallback_random=True,
     )
 
 

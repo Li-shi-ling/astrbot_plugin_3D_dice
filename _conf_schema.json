@@ -87,5 +87,18 @@
     "type": "bool",
     "default": true,
     "hint": "启用后在 GIF 捕获完成后立即读取页面结果，可略微减少等待时间"
+  },
+  "result_timeout_ms": {
+    "description": "结果读取最长等待时间（毫秒）",
+    "type": "int",
+    "default": 8000,
+    "hint": "只影响 result_mode 为 physical 的情况；设置为 0 会直接走超时 fallback"
+  },
+  "result_mode": {
+    "description": "结果读取模式",
+    "type": "string",
+    "default": "physical",
+    "options": ["physical", "fast"],
+    "hint": "physical 会等待骰子物理停止并读取真实结果；fast 会立即读取一次结果，拿不到就使用随机 fallback"
   }
 }

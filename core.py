@@ -13,6 +13,7 @@ SUPPORTED_GIF_BACKENDS = (
     "cdp_screencast_limited",
     "cdp_screencast_ffmpeg",
 )
+SUPPORTED_RESULT_MODES = ("physical", "fast")
 COMMAND_NAMES = ("3d_dice", "3ddice", "dice3d", "roll3d", "投骰子", "骰子")
 MAX_APP_DICE_COUNT = 6
 DEFAULT_DICE_TYPE = "D6"
@@ -21,6 +22,8 @@ DEFAULT_DURATION_MS = 1200
 DEFAULT_FPS = 8
 DEFAULT_WIDTH = 640
 DEFAULT_HEIGHT = 960
+DEFAULT_RESULT_TIMEOUT_MS = 8000
+DEFAULT_RESULT_MODE = "physical"
 DEPENDENCY_UNAVAILABLE_TEXT = (
     "3D骰子功能还没准备好：缺少 Playwright 或 Chromium。请联系管理员安装依赖后再试。"
 )
@@ -53,6 +56,8 @@ class DiceRenderOptions:
     width: int
     height: int
     parallel_result: bool
+    result_timeout_ms: int
+    result_mode: str
 
 
 def normalize_dice_type(value: Any) -> str:
@@ -81,6 +86,16 @@ def normalize_gif_backend(value: Any) -> str:
         supported = ", ".join(SUPPORTED_GIF_BACKENDS)
         raise ValueError(f"Unsupported GIF backend: {value}. Supported: {supported}.")
     return backend
+
+
+def normalize_result_mode(value: Any) -> str:
+    mode = str(value or DEFAULT_RESULT_MODE).strip().lower()
+    if mode not in SUPPORTED_RESULT_MODES:
+        supported = ", ".join(SUPPORTED_RESULT_MODES)
+        raise ValueError(
+            f"Unsupported result mode: {value}. Supported: {supported}."
+        )
+    return mode
 
 
 def parse_roll_request(
@@ -164,6 +179,10 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         "width": _int_in_range(config.get("width", DEFAULT_WIDTH), 320, 1920),
         "height": _int_in_range(config.get("height", DEFAULT_HEIGHT), 320, 2400),
         "parallel_result": _bool_value(config.get("parallel_result", True)),
+        "result_timeout_ms": _int_in_range(
+            config.get("result_timeout_ms", DEFAULT_RESULT_TIMEOUT_MS), 0, 20000
+        ),
+        "result_mode": normalize_result_mode(config.get("result_mode")),
     }
 
 
@@ -181,6 +200,8 @@ def build_render_options(config: dict[str, Any] | None = None) -> DiceRenderOpti
         width=normalized["width"],
         height=normalized["height"],
         parallel_result=normalized["parallel_result"],
+        result_timeout_ms=normalized["result_timeout_ms"],
+        result_mode=normalized["result_mode"],
     )
 
 

@@ -132,6 +132,8 @@ class ThreeDDicePlugin(Star):
                 screencast_quality=options.screencast_quality,
                 better_render_quality=options.better_render_quality,
                 parallel_result=options.parallel_result,
+                result_timeout_ms=options.result_timeout_ms,
+                result_mode=options.result_mode,
             )
         except Exception:
             logger.exception("3D dice render failed")
