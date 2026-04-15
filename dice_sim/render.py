@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 from typing import Iterable
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from .errors import RenderError
 from .result import quaternion_to_matrix
@@ -106,7 +107,7 @@ def _render_one(
     light /= np.linalg.norm(light)
     d4_vertex_values = _d4_vertex_values(mesh) if mesh.dice_type == "D4" else {}
     number_decals: list[tuple[np.ndarray, str]] = []
-    d4_tip_decals: list[tuple[np.ndarray, str, float]] = []
+    d4_tip_decals: list[tuple[np.ndarray, str, float, bool]] = []
 
     for (
         _depth,
@@ -134,11 +135,14 @@ def _render_one(
                     value = d4_vertex_values.get(vertex_index)
                     if value is None:
                         continue
-                    vertex_weight = 0.42 if vertex_index == top_vertex else 0.72
+                    is_top_vertex = vertex_index == top_vertex
+                    vertex_weight = 0.46 if is_top_vertex else 0.74
                     label_position = (
                         face_center * (1.0 - vertex_weight) + point * vertex_weight
                     )
-                    d4_tip_decals.append((label_position, str(value), area))
+                    d4_tip_decals.append(
+                        (label_position, str(value), area, is_top_vertex)
+                    )
         elif normal[2] > 0.08 and surface_index < len(mesh.result_values):
             number_decals.append(
                 (polygon_points.copy(), str(mesh.result_values[surface_index]))
@@ -146,8 +150,9 @@ def _render_one(
 
     for polygon_points, text in number_decals:
         _draw_face_number(image, polygon_points, text, ink_color)
-    for center, text, area in d4_tip_decals:
-        _draw_tip_number(image, center, text, ink_color, area)
+    d4_tip_decals.sort(key=lambda item: (not item[3], item[0][1]))
+    for center, text, area, is_top_vertex in d4_tip_decals:
+        _draw_d4_tip_number(image, center, text, ink_color, area, is_top_vertex)
 
     if show_result_label:
         label_font = _font(max(13, min(width, height) // 22))
@@ -296,91 +301,191 @@ def _draw_face_number(
     ink_color: tuple[int, int, int],
 ) -> None:
     area = _polygon_area(points)
-    if area < 24:
+    if area < 18:
         return
-    edge_vectors = [
-        points[(idx + 1) % len(points)] - points[idx] for idx in range(len(points))
-    ]
-    edge = max(edge_vectors, key=lambda vector: float(np.linalg.norm(vector)))
-    edge_length = float(np.linalg.norm(edge))
-    if edge_length < 8:
-        return
-
-    angle = math.degrees(math.atan2(float(edge[1]), float(edge[0])))
-    while angle <= -90:
-        angle += 180
-    while angle > 90:
-        angle -= 180
-    if area < 180:
-        angle = 0
-
-    text_scale = 0.72 if len(text) == 1 else 0.58
-    edge_scale = 0.70 if len(text) == 1 else 0.58
-    minimum_size = 14 if len(text) == 1 else 12
-    size = int(
-        max(
-            minimum_size,
-            min(36, math.sqrt(area) * text_scale, edge_length * edge_scale),
-        )
-    )
-    _paste_number_text(image, points.mean(axis=0), text, ink_color, size, angle)
+    texture_size = 384
+    source_polygon = _texture_polygon(len(points), texture_size)
+    texture = _face_number_texture(text, len(points), ink_color, texture_size)
+    _draw_textured_polygon(image, points, source_polygon, texture)
 
 
-def _draw_tip_number(
+def _draw_d4_tip_number(
     image: Image.Image,
     center: np.ndarray,
     text: str,
     ink_color: tuple[int, int, int],
     face_area: float,
+    is_top_vertex: bool,
 ) -> None:
-    if face_area < 24:
+    if face_area < 18:
         return
-    size = int(max(12, min(28, math.sqrt(face_area) * 0.40)))
-    _paste_number_text(image, center, text, ink_color, size, 0.0)
-
-
-def _paste_number_text(
-    image: Image.Image,
-    center: np.ndarray,
-    text: str,
-    ink_color: tuple[int, int, int],
-    size: int,
-    angle: float,
-) -> None:
-    font = _font(size)
-    probe = Image.new("L", (1, 1))
-    probe_draw = ImageDraw.Draw(probe)
-    bbox = probe_draw.textbbox((0, 0), text, font=font)
+    size = int(max(14, min(30, math.sqrt(face_area) * 0.62)))
+    if is_top_vertex:
+        size += 2
+    draw = ImageDraw.Draw(image)
+    font = _texture_font(size)
+    bbox = draw.textbbox((0, 0), text, font=font)
     text_width = bbox[2] - bbox[0]
     text_height = bbox[3] - bbox[1]
     if text_width <= 0 or text_height <= 0:
         return
-
-    padding = max(3, size // 4)
-    tile = Image.new(
-        "RGBA",
-        (text_width + padding * 2, text_height + padding * 2),
-        (255, 255, 255, 0),
+    draw.text(
+        (
+            float(center[0]) - text_width / 2 - bbox[0],
+            float(center[1]) - text_height / 2 - bbox[1],
+        ),
+        text,
+        font=font,
+        fill=ink_color,
+        stroke_width=max(1, size // 10),
+        stroke_fill=(255, 255, 255),
     )
-    tile_draw = ImageDraw.Draw(tile)
-    tile_draw.text(
-        (padding - bbox[0], padding - bbox[1]),
+
+
+def _draw_textured_polygon(
+    image: Image.Image,
+    destination_polygon: np.ndarray,
+    source_polygon: np.ndarray,
+    texture: Image.Image,
+) -> None:
+    min_x = max(0, int(math.floor(float(destination_polygon[:, 0].min()) - 2)))
+    min_y = max(0, int(math.floor(float(destination_polygon[:, 1].min()) - 2)))
+    max_x = min(image.width, int(math.ceil(float(destination_polygon[:, 0].max()) + 2)))
+    max_y = min(
+        image.height, int(math.ceil(float(destination_polygon[:, 1].max()) + 2))
+    )
+    if max_x <= min_x or max_y <= min_y:
+        return
+
+    output_size = (max_x - min_x, max_y - min_y)
+    destination = destination_polygon - np.array([min_x, min_y], dtype=float)
+    triangles = _polygon_triangles(len(destination))
+    for triangle in triangles:
+        src_triangle = source_polygon[list(triangle)]
+        dst_triangle = destination[list(triangle)]
+        coeffs = _affine_coefficients(src_triangle, dst_triangle)
+        try:
+            transform_affine = Image.Transform.AFFINE
+        except AttributeError:
+            transform_affine = Image.AFFINE
+        warped = texture.transform(
+            output_size,
+            transform_affine,
+            coeffs,
+            resample=_bicubic_resample(),
+        )
+        mask = Image.new("L", output_size, 0)
+        mask_draw = ImageDraw.Draw(mask)
+        mask_draw.polygon([tuple(point) for point in dst_triangle], fill=255)
+        alpha = ImageChops.multiply(warped.getchannel("A"), mask)
+        warped.putalpha(alpha)
+        image.paste(warped, (min_x, min_y), warped)
+
+
+def _texture_polygon(point_count: int, texture_size: int) -> np.ndarray:
+    margin = texture_size * 0.14
+    if point_count == 3:
+        return np.array(
+            [
+                [texture_size * 0.50, margin],
+                [texture_size - margin, texture_size - margin],
+                [margin, texture_size - margin],
+            ],
+            dtype=float,
+        )
+    return np.array(
+        [
+            [margin, margin],
+            [texture_size - margin, margin],
+            [texture_size - margin, texture_size - margin],
+            [margin, texture_size - margin],
+        ],
+        dtype=float,
+    )
+
+
+def _polygon_triangles(point_count: int) -> tuple[tuple[int, int, int], ...]:
+    return tuple((0, idx, idx + 1) for idx in range(1, point_count - 1))
+
+
+def _affine_coefficients(
+    source_triangle: np.ndarray, destination_triangle: np.ndarray
+) -> tuple[float, float, float, float, float, float]:
+    rows = []
+    values = []
+    for source, destination in zip(source_triangle, destination_triangle):
+        x, y = float(destination[0]), float(destination[1])
+        rows.append([x, y, 1.0, 0.0, 0.0, 0.0])
+        rows.append([0.0, 0.0, 0.0, x, y, 1.0])
+        values.extend([float(source[0]), float(source[1])])
+    coeffs = np.linalg.solve(
+        np.asarray(rows, dtype=float), np.asarray(values, dtype=float)
+    )
+    return tuple(float(value) for value in coeffs)
+
+
+@lru_cache(maxsize=256)
+def _face_number_texture(
+    text: str,
+    point_count: int,
+    ink_color: tuple[int, int, int],
+    texture_size: int,
+) -> Image.Image:
+    center = (texture_size / 2, texture_size / 2)
+    if point_count == 3:
+        font_size = int(texture_size * (0.34 if len(text) == 1 else 0.27))
+    else:
+        font_size = int(texture_size * (0.46 if len(text) == 1 else 0.34))
+    return _labeled_face_texture(((text, center),), ink_color, texture_size, font_size)
+
+
+@lru_cache(maxsize=512)
+def _labeled_face_texture(
+    labels: tuple[tuple[str, tuple[float, float]], ...],
+    ink_color: tuple[int, int, int],
+    texture_size: int,
+    font_size: int | None = None,
+) -> Image.Image:
+    image = Image.new("RGBA", (texture_size, texture_size), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(image)
+    size = font_size or int(texture_size * 0.16)
+    font = _texture_font(size)
+    for text, center in labels:
+        _draw_centered_texture_text(draw, text, center, font, size, ink_color)
+    return image
+
+
+def _draw_centered_texture_text(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    center: tuple[float, float],
+    font: ImageFont.ImageFont,
+    size: int,
+    ink_color: tuple[int, int, int],
+) -> None:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+    if text_width <= 0 or text_height <= 0:
+        return
+    draw.text(
+        (
+            center[0] - text_width / 2 - bbox[0],
+            center[1] - text_height / 2 - bbox[1],
+        ),
         text,
         font=font,
         fill=(*ink_color, 255),
-        stroke_width=max(1, size // 9),
+        stroke_width=max(1, size // 18),
         stroke_fill=(255, 255, 255, 255),
     )
+
+
+def _bicubic_resample() -> int:
     try:
-        resample = Image.Resampling.BICUBIC
+        return Image.Resampling.BICUBIC
     except AttributeError:
-        resample = Image.BICUBIC
-    rotated = tile.rotate(angle, resample=resample, expand=True)
-    paste_at = (
-        int(round(float(center[0]) - rotated.width / 2)),
-        int(round(float(center[1]) - rotated.height / 2)),
-    )
-    image.paste(rotated, paste_at, rotated)
+        return Image.BICUBIC
 
 
 def _project_world(
@@ -448,6 +553,15 @@ def _hex(value: str) -> tuple[int, int, int]:
 
 def _font(size: int) -> ImageFont.ImageFont:
     for font_name in ("arialbd.ttf", "arial.ttf"):
+        try:
+            return ImageFont.truetype(font_name, size=size)
+        except Exception:
+            pass
+    return ImageFont.load_default()
+
+
+def _texture_font(size: int) -> ImageFont.ImageFont:
+    for font_name in ("arial.ttf", "segoeui.ttf", "arialbd.ttf"):
         try:
             return ImageFont.truetype(font_name, size=size)
         except Exception:
