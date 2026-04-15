@@ -18,10 +18,19 @@ def test_roll_gif_writes_animated_file_for_supported_dice(tmp_path, dice_type: s
         width=240,
         height=240,
         fps=4,
-        duration_ms=900,
+        duration_ms=5000,
     )
     assert result.gif_path.exists()
     assert result.results
     assert 1 <= result.results[0] <= int(dice_type.removeprefix("D"))
+    assert result.metadata["capture_mode"] == "until_settled"
+    assert result.metadata["settled"] is True
+    assert result.metadata["actual_duration_ms"] > 0
+    assert result.metadata["settle_time_ms"] is not None
+    assert max(result.metadata["final_linear_speeds"]) < 0.18
+    assert max(result.metadata["final_angular_speeds"]) < 0.35
+    assert min(result.metadata["final_contact_vertices"]) >= 3
+    assert result.metadata["horizontal_travel"] > 2.0
+    assert result.metadata["max_height"] > 1.0
     with Image.open(result.gif_path) as image:
         assert getattr(image, "n_frames", 1) > 1

@@ -16,7 +16,7 @@ def main() -> None:
     parser.add_argument("--width", type=int, default=360)
     parser.add_argument("--height", type=int, default=300)
     parser.add_argument("--fps", type=int, default=10)
-    parser.add_argument("--duration-ms", type=int, default=1600)
+    parser.add_argument("--duration-ms", type=int, default=5000)
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -30,7 +30,20 @@ def main() -> None:
             fps=args.fps,
             duration_ms=args.duration_ms,
         )
-        print(f"{dice_type}: {result.results} total={result.total} path={result.gif_path}")
+        metadata = result.metadata
+        print(
+            f"{dice_type}: result={result.results} total={result.total} "
+            f"settled={metadata.get('settled')} "
+            f"contact_vertices={metadata.get('final_contact_vertices')} "
+            f"settle_ms={metadata.get('settle_time_ms')} "
+            f"frames={metadata.get('frames')} "
+            f"actual_ms={metadata.get('actual_duration_ms')} "
+            f"travel={metadata.get('horizontal_travel'):.2f} "
+            f"max_h={metadata.get('max_height'):.2f} "
+            f"final_v={max(metadata.get('final_linear_speeds') or [0]):.3f} "
+            f"final_w={max(metadata.get('final_angular_speeds') or [0]):.3f} "
+            f"path={result.gif_path}"
+        )
 
 
 if __name__ == "__main__":

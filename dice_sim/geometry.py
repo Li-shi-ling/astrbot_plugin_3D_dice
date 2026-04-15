@@ -129,29 +129,23 @@ def _octahedron() -> MeshData:
 
 def _d10_trapezohedron() -> MeshData:
     radius = 1.0
-    pole_height = 1.08
-    ring_z = 0.24
+    pole_height = 1.18
     vertices: list[list[float]] = [[0, 0, pole_height], [0, 0, -pole_height]]
-    upper: list[int] = []
-    lower: list[int] = []
+    ring: list[int] = []
     for idx in range(5):
         a = 2 * math.pi * idx / 5
-        b = a + math.pi / 5
-        upper.append(len(vertices))
-        vertices.append([radius * math.cos(a), radius * math.sin(a), ring_z])
-        lower.append(len(vertices))
-        vertices.append([radius * math.cos(b), radius * math.sin(b), -ring_z])
+        ring.append(len(vertices))
+        vertices.append([radius * math.cos(a), radius * math.sin(a), 0.0])
 
-    surfaces: list[tuple[int, int, int, int]] = []
+    surfaces: list[tuple[int, int, int]] = []
     for idx in range(5):
         nxt = (idx + 1) % 5
-        surfaces.append((0, upper[idx], lower[idx], upper[nxt]))
-        surfaces.append((1, lower[nxt], upper[nxt], lower[idx]))
+        surfaces.append((0, ring[idx], ring[nxt]))
+        surfaces.append((1, ring[nxt], ring[idx]))
 
     vertices_array = np.asarray(vertices, dtype=float)
-    surfaces = _orient_surfaces(vertices_array, surfaces)
-    faces = _triangulate_surfaces(surfaces)
-    normals, centers = _surface_normals_and_centers(vertices_array, surfaces)
+    faces = _oriented_faces(vertices_array, surfaces)
+    normals, centers = _face_normals_and_centers(vertices_array, faces)
     return MeshData(
         dice_type="D10",
         vertices=vertices_array,
@@ -160,7 +154,7 @@ def _d10_trapezohedron() -> MeshData:
         result_values=tuple(range(1, 11)),
         result_rule="top_face",
         result_centers=centers,
-        render_faces=surfaces,
+        render_faces=tuple(tuple(face) for face in faces.tolist()),
     )
 
 

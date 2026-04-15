@@ -4,7 +4,7 @@ import random
 from pathlib import Path
 
 from .cache import build_output_path, cleanup_cache
-from .errors import UnsupportedDiceError
+from .errors import SimulationError, UnsupportedDiceError
 from .geometry import SUPPORTED_DICE_TYPES, create_mesh
 from .gif import encode_gif
 from .physics import simulate_roll
@@ -23,7 +23,7 @@ def roll_gif(
     width: int = 480,
     height: int = 360,
     fps: int = 12,
-    duration_ms: int = 2200,
+    duration_ms: int = 5000,
     style: StyleOptions | None = None,
     max_cache_files: int = 80,
     cache_max_age_seconds: int = 604800,
@@ -54,11 +54,16 @@ def roll_gif_with_options(options: RollOptions) -> RollGifResult:
     width = _clamp_int(options.width, 240, 1024)
     height = _clamp_int(options.height, 240, 1024)
     fps = _clamp_int(options.fps, 4, 30)
-    duration_ms = _clamp_int(options.duration_ms, 800, 6000)
+    duration_ms = _clamp_int(options.duration_ms, 1500, 10000)
     seed = int(options.seed if options.seed is not None else random.SystemRandom().randrange(1, 2**31))
 
     mesh = create_mesh(dice_type)
     simulation = simulate_roll(mesh, count, seed, duration_ms, fps)
+    if not simulation.settled:
+        raise SimulationError(
+            f"{dice_type} did not settle within {duration_ms} ms; "
+            "increase duration_ms or lower throw intensity."
+        )
     values = tuple(detect_result(mesh, pose) for pose in simulation.final_poses)
     frames = render_frames(mesh, simulation.frames, width, height, options.style, values)
     output_path = build_output_path(options.output_dir, dice_type, seed, options.output_path)
@@ -77,9 +82,22 @@ def roll_gif_with_options(options: RollOptions) -> RollGifResult:
         duration_ms=duration_ms,
         metadata={
             "frames": len(frames),
+            "actual_duration_ms": int(round(simulation.frames[-1].time_seconds * 1000)),
+            "settled": simulation.settled,
+            "settle_time_ms": (
+                None
+                if simulation.settle_time_seconds is None
+                else int(round(simulation.settle_time_seconds * 1000))
+            ),
+            "final_linear_speeds": list(simulation.final_linear_speeds),
+            "final_angular_speeds": list(simulation.final_angular_speeds),
+            "final_contact_vertices": list(simulation.final_contact_vertices),
+            "horizontal_travel": simulation.horizontal_travel,
+            "max_height": simulation.max_height,
             "result_rule": mesh.result_rule,
             "renderer": "pillow-software",
             "physics": "pybullet-direct",
+            "capture_mode": "until_settled",
         },
     )
 

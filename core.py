@@ -115,7 +115,7 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         "width": _int_in_range(config.get("width", DEFAULT_WIDTH), 240, 1024),
         "height": _int_in_range(config.get("height", DEFAULT_HEIGHT), 240, 1024),
         "seed": seed,
-        "die_color": _optional_color(config.get("die_color"), "#d83a34"),
+        "die_color": _optional_color(config.get("die_color"), "#ffffff"),
         "background_color": _optional_color(config.get("background_color"), "#f5f7fb"),
         "max_cache_files": _int_in_range(config.get("max_cache_files", 80), 1, 1000),
         "cache_max_age_seconds": _int_in_range(config.get("cache_max_age_seconds", 604800), 0, 31536000),

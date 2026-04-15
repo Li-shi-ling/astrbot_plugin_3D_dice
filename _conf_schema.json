@@ -45,7 +45,7 @@
   "die_color": {
     "description": "骰子颜色，十六进制 RGB",
     "type": "string",
-    "default": "#d83a34"
+    "default": "#ffffff"
   },
   "background_color": {
     "description": "背景颜色，十六进制 RGB",

@@ -23,4 +23,4 @@ def test_d10_uses_ten_result_faces() -> None:
     assert mesh.dice_type == "D10"
     assert len(mesh.result_values) == 10
     assert len(mesh.render_faces) == 10
-    assert len(mesh.faces) == 20
+    assert len(mesh.faces) == 10

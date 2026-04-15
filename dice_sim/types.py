@@ -36,14 +36,22 @@ class SimulationResult:
     frames: tuple[SimulationFrame, ...]
     final_poses: tuple[BodyPose, ...]
     seed: int
+    settled: bool = False
+    settle_time_seconds: float | None = None
+    final_linear_speeds: tuple[float, ...] = field(default_factory=tuple)
+    final_angular_speeds: tuple[float, ...] = field(default_factory=tuple)
+    horizontal_travel: float = 0.0
+    max_height: float = 0.0
+    final_contact_vertices: tuple[int, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
 class StyleOptions:
-    die_color: str = "#d83a34"
+    die_color: str = "#ffffff"
     background_color: str = "#f5f7fb"
-    ink_color: str = "#ffffff"
-    label_color: str = "#20242c"
+    ink_color: str = "#000000"
+    edge_color: str = "#000000"
+    label_color: str = "#000000"
 
 
 @dataclass(frozen=True)
@@ -56,7 +64,7 @@ class RollOptions:
     width: int = 480
     height: int = 360
     fps: int = 12
-    duration_ms: int = 2200
+    duration_ms: int = 5000
     style: StyleOptions = field(default_factory=StyleOptions)
     max_cache_files: int = 80
     cache_max_age_seconds: int = 604800
