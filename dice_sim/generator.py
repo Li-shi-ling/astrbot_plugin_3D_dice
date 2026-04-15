@@ -75,11 +75,17 @@ def roll_gif_with_options(options: RollOptions) -> RollGifResult:
         height,
         options.style,
         values,
-        simulation.settle_time_seconds,
+        simulation.result_label_start_seconds,
     )
     output_path = build_output_path(options.output_dir, dice_type, seed, options.output_path)
     encoded_path = encode_gif(frames, output_path, fps)
     cleanup_cache(options.output_dir, options.max_cache_files, options.cache_max_age_seconds)
+    actual_duration_ms = int(round(simulation.frames[-1].time_seconds * 1000))
+    result_label_start_ms = (
+        None
+        if simulation.result_label_start_seconds is None
+        else int(round(simulation.result_label_start_seconds * 1000))
+    )
     return RollGifResult(
         gif_path=encoded_path,
         dice_type=dice_type,
@@ -94,7 +100,7 @@ def roll_gif_with_options(options: RollOptions) -> RollGifResult:
         final_hold_ms=final_hold_ms,
         metadata={
             "frames": len(frames),
-            "actual_duration_ms": int(round(simulation.frames[-1].time_seconds * 1000)),
+            "actual_duration_ms": actual_duration_ms,
             "final_hold_ms": final_hold_ms,
             "settled": simulation.settled,
             "settle_time_ms": (
@@ -103,9 +109,12 @@ def roll_gif_with_options(options: RollOptions) -> RollGifResult:
                 else int(round(simulation.settle_time_seconds * 1000))
             ),
             "result_label_start_ms": (
+                result_label_start_ms
+            ),
+            "result_visible_ms": (
                 None
-                if simulation.settle_time_seconds is None
-                else int(round(simulation.settle_time_seconds * 1000))
+                if result_label_start_ms is None
+                else actual_duration_ms - result_label_start_ms
             ),
             "final_linear_speeds": list(simulation.final_linear_speeds),
             "final_angular_speeds": list(simulation.final_angular_speeds),

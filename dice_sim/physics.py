@@ -15,7 +15,7 @@ QUIET_LINEAR_SPEED = 0.12
 QUIET_ANGULAR_SPEED = 0.25
 QUIET_HOLD_SECONDS = 0.25
 POST_SETTLE_HOLD_SECONDS = 0.35
-FINAL_FACE_TRANSITION_SECONDS = 0.50
+FINAL_FACE_TRANSITION_SECONDS = 1.20
 TABLE_HALF_EXTENTS = [24.0, 16.0, 0.08]
 TABLE_TOP_Z = 0.0
 THROW_START_X = -5.7
@@ -32,7 +32,7 @@ def simulate_roll(
     seed: int,
     duration_ms: int,
     fps: int,
-    final_hold_ms: int = 3500,
+    final_hold_ms: int = 3000,
 ) -> SimulationResult:
     p = _load_pybullet()
     rng = random.Random(seed)
@@ -133,8 +133,9 @@ def simulate_roll(
         ) = _capture_until_settled(p, client, bodies, duration_ms, fps)
         raw_final_poses = tuple(_pose_for_body(p, client, body) for body in bodies)
         final_poses = tuple(_face_rest_pose(mesh, pose) for pose in raw_final_poses)
+        result_label_start = settle_time
         if settled:
-            frames = _append_final_hold_frames(
+            frames, result_label_start = _append_final_hold_frames(
                 frames,
                 final_poses,
                 fps,
@@ -157,6 +158,7 @@ def simulate_roll(
             ),
             inter_body_contact_count=body_contact_count,
             inter_body_contact_steps=body_contact_steps,
+            result_label_start_seconds=result_label_start,
         )
     except MissingDependencyError:
         raise
@@ -452,9 +454,9 @@ def _append_final_hold_frames(
     fps: int,
     settle_time: float | None,
     final_hold_seconds: float,
-) -> list[SimulationFrame]:
+) -> tuple[list[SimulationFrame], float | None]:
     if not frames:
-        return frames
+        return frames, settle_time
     frame_rate = max(1, fps)
     start = len(frames) - 1
     if settle_time is not None:
@@ -493,7 +495,7 @@ def _append_final_hold_frames(
             )
         )
 
-    return output
+    return output, hold_start
 
 
 def _interpolate_pose(source: BodyPose, target: BodyPose, amount: float) -> BodyPose:
