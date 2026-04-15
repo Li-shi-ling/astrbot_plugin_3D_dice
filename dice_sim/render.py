@@ -13,6 +13,7 @@ from .types import MeshData, SimulationFrame, StyleOptions
 
 GROUND_Z = 0.0
 TABLE_MARGIN = 1.25
+D6_FRONT_FACE_EPSILON = 1e-3
 
 
 def render_frames(
@@ -107,7 +108,6 @@ def _render_one(
     light /= np.linalg.norm(light)
     d4_vertex_values = _d4_vertex_values(mesh) if mesh.dice_type == "D4" else {}
     number_decals: list[tuple[np.ndarray, str]] = []
-    d6_pip_decals: list[tuple[np.ndarray, int]] = []
     d4_face_decals: list[tuple[np.ndarray, tuple[int, ...], int]] = []
 
     for (
@@ -122,31 +122,38 @@ def _render_one(
         if _polygon_area(polygon_points) <= 1:
             continue
         normal = _surface_camera_normal(pts)
+        front_facing = normal[2] > D6_FRONT_FACE_EPSILON
+        if mesh.dice_type == "D6" and not front_facing:
+            continue
         shade = 0.72 + 0.28 * max(0.0, float(np.dot(normal, light)))
         color = tuple(int(np.clip(channel * shade, 0, 255)) for channel in base_color)
         polygon = [tuple(point) for point in polygon_points]
         draw.polygon(polygon, fill=color)
-        draw.line(polygon + [polygon[0]], fill=edge_color, width=2)
         if mesh.dice_type == "D4":
+            draw.line(polygon + [polygon[0]], fill=edge_color, width=2)
             show_d4_labels = normal[2] > 0.08 or top_vertex in surface
             if show_d4_labels and surface_index < len(mesh.result_values):
                 d4_face_decals.append(
                     (polygon_points.copy(), tuple(surface), top_vertex)
                 )
-        elif mesh.dice_type == "D6" and normal[2] > 0.08:
+        elif mesh.dice_type == "D6":
             if surface_index < len(mesh.result_values):
-                d6_pip_decals.append(
-                    (polygon_points.copy(), int(mesh.result_values[surface_index]))
+                _draw_d6_pips(
+                    image,
+                    polygon_points.copy(),
+                    int(mesh.result_values[surface_index]),
+                    ink_color,
                 )
-        elif normal[2] > 0.08 and surface_index < len(mesh.result_values):
-            number_decals.append(
-                (polygon_points.copy(), str(mesh.result_values[surface_index]))
-            )
+            draw.line(polygon + [polygon[0]], fill=edge_color, width=2)
+        else:
+            draw.line(polygon + [polygon[0]], fill=edge_color, width=2)
+            if normal[2] > 0.08 and surface_index < len(mesh.result_values):
+                number_decals.append(
+                    (polygon_points.copy(), str(mesh.result_values[surface_index]))
+                )
 
     for polygon_points, text in number_decals:
         _draw_face_number(image, polygon_points, text, ink_color)
-    for polygon_points, value in d6_pip_decals:
-        _draw_d6_pips(image, polygon_points, value, ink_color)
     for polygon_points, surface, top_vertex in d4_face_decals:
         _draw_d4_face_numbers(
             image,

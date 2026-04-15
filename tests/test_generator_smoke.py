@@ -30,7 +30,7 @@ def test_roll_gif_writes_animated_file_for_supported_dice(tmp_path, dice_type: s
     assert max(result.metadata["final_linear_speeds"]) < 0.18
     assert max(result.metadata["final_angular_speeds"]) < 0.35
     assert min(result.metadata["final_contact_vertices"]) >= 3
-    assert result.metadata["horizontal_travel"] > 2.0
-    assert result.metadata["max_height"] > 1.0
+    assert result.metadata["horizontal_travel"] > 4.0
+    assert result.metadata["max_height"] > 2.8
     with Image.open(result.gif_path) as image:
         assert getattr(image, "n_frames", 1) > 1

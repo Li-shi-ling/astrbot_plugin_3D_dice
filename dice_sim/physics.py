@@ -11,12 +11,16 @@ from .result import quaternion_to_matrix
 from .types import BodyPose, MeshData, SimulationFrame, SimulationResult
 
 PHYSICS_HZ = 240
-QUIET_LINEAR_SPEED = 0.18
-QUIET_ANGULAR_SPEED = 0.35
+QUIET_LINEAR_SPEED = 0.12
+QUIET_ANGULAR_SPEED = 0.25
 QUIET_HOLD_SECONDS = 0.25
 POST_SETTLE_HOLD_SECONDS = 0.35
 TABLE_HALF_EXTENTS = [7.0, 4.5, 0.08]
 TABLE_TOP_Z = 0.0
+THROW_START_X = -4.15
+THROW_START_Y = -1.35
+THROW_START_Z = 2.45
+D6_TUMBLE_SPEED_RANGE = (13.0, 18.0)
 
 
 def simulate_roll(
@@ -75,13 +79,13 @@ def simulate_roll(
             physicsClientId=client,
         )
 
-        spacing = 0.55
-        start_x = -3.2 - spacing * (count - 1) / 2
+        spacing = 0.78
+        start_x = THROW_START_X - spacing * (count - 1) / 2
         for idx in range(count):
             position = [
                 start_x + idx * spacing + rng.uniform(-0.12, 0.12),
-                -0.9 + rng.uniform(-0.18, 0.18),
-                1.85 + idx * 0.16,
+                THROW_START_Y + idx * 0.18 + rng.uniform(-0.16, 0.16),
+                THROW_START_Z + idx * 0.22 + rng.uniform(-0.05, 0.08),
             ]
             orientation = p.getQuaternionFromEuler(
                 [
@@ -98,29 +102,23 @@ def simulate_roll(
                 baseOrientation=orientation,
                 physicsClientId=client,
             )
+            dynamics = _body_dynamics(mesh)
             p.changeDynamics(
                 body,
                 -1,
-                lateralFriction=1.25,
-                restitution=0.12,
-                rollingFriction=0.20,
-                spinningFriction=0.18,
-                linearDamping=0.015,
-                angularDamping=0.02,
+                lateralFriction=dynamics["lateral_friction"],
+                restitution=dynamics["restitution"],
+                rollingFriction=dynamics["rolling_friction"],
+                spinningFriction=dynamics["spinning_friction"],
+                linearDamping=dynamics["linear_damping"],
+                angularDamping=dynamics["angular_damping"],
                 physicsClientId=client,
             )
+            linear_velocity = _initial_linear_velocity(mesh, rng)
             p.resetBaseVelocity(
                 body,
-                linearVelocity=[
-                    rng.uniform(4.2, 5.4),
-                    rng.uniform(0.35, 1.25),
-                    rng.uniform(1.1, 2.2),
-                ],
-                angularVelocity=[
-                    rng.uniform(-34.0, 34.0),
-                    rng.uniform(-34.0, 34.0),
-                    rng.uniform(-34.0, 34.0),
-                ],
+                linearVelocity=linear_velocity,
+                angularVelocity=_initial_angular_velocity(mesh, linear_velocity, rng),
                 physicsClientId=client,
             )
             bodies.append(body)
@@ -156,6 +154,70 @@ def simulate_roll(
             p.disconnect(client)
         except Exception:
             pass
+
+
+def _body_dynamics(mesh: MeshData) -> dict[str, float]:
+    if mesh.dice_type == "D6":
+        return {
+            "lateral_friction": 1.18,
+            "restitution": 0.16,
+            "rolling_friction": 0.075,
+            "spinning_friction": 0.055,
+            "linear_damping": 0.008,
+            "angular_damping": 0.006,
+        }
+    return {
+        "lateral_friction": 1.25,
+        "restitution": 0.12,
+        "rolling_friction": 0.20,
+        "spinning_friction": 0.18,
+        "linear_damping": 0.015,
+        "angular_damping": 0.02,
+    }
+
+
+def _initial_linear_velocity(mesh: MeshData, rng: random.Random) -> list[float]:
+    if mesh.dice_type == "D6":
+        return [
+            rng.uniform(4.7, 5.5),
+            rng.uniform(0.45, 1.10),
+            rng.uniform(4.0, 5.0),
+        ]
+    return [
+        rng.uniform(4.1, 5.0),
+        rng.uniform(0.55, 1.35),
+        rng.uniform(3.0, 4.2),
+    ]
+
+
+def _initial_angular_velocity(
+    mesh: MeshData, linear_velocity: list[float], rng: random.Random
+) -> list[float]:
+    if mesh.dice_type != "D6":
+        return [
+            rng.uniform(-34.0, 34.0),
+            rng.uniform(-34.0, 34.0),
+            rng.uniform(-34.0, 34.0),
+        ]
+
+    travel = np.array([linear_velocity[0], linear_velocity[1], 0.0], dtype=float)
+    travel_norm = float(np.linalg.norm(travel))
+    if travel_norm < 1e-6:
+        travel = np.array([1.0, 0.0, 0.0], dtype=float)
+    else:
+        travel /= travel_norm
+    roll_axis = np.cross(np.array([0.0, 0.0, 1.0], dtype=float), travel)
+    roll_axis_norm = float(np.linalg.norm(roll_axis))
+    if roll_axis_norm < 1e-6:
+        roll_axis = np.array([0.0, 1.0, 0.0], dtype=float)
+    else:
+        roll_axis /= roll_axis_norm
+
+    tumble = roll_axis * rng.choice((-1.0, 1.0)) * rng.uniform(*D6_TUMBLE_SPEED_RANGE)
+    side_roll = travel * rng.uniform(-3.5, 3.5)
+    yaw = np.array([0.0, 0.0, rng.uniform(-2.5, 2.5)], dtype=float)
+    angular = tumble + side_roll + yaw
+    return [float(component) for component in angular]
 
 
 def _capture_until_settled(
