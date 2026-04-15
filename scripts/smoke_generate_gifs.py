@@ -17,7 +17,7 @@ def main() -> None:
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--fps", type=int, default=12)
     parser.add_argument("--duration-ms", type=int, default=5000)
-    parser.add_argument("--final-hold-ms", type=int, default=3500)
+    parser.add_argument("--final-hold-ms", type=int, default=3000)
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)

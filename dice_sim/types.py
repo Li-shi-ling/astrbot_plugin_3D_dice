@@ -67,7 +67,7 @@ class RollOptions:
     height: int = 480
     fps: int = 12
     duration_ms: int = 5000
-    final_hold_ms: int = 3500
+    final_hold_ms: int = 3000
     style: StyleOptions = field(default_factory=StyleOptions)
     max_cache_files: int = 80
     cache_max_age_seconds: int = 604800

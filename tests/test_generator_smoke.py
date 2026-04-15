@@ -27,7 +27,7 @@ def test_roll_gif_writes_animated_file_for_supported_dice(tmp_path, dice_type: s
     assert result.metadata["settled"] is True
     assert result.metadata["actual_duration_ms"] > 0
     assert result.metadata["settle_time_ms"] is not None
-    assert result.metadata["final_hold_ms"] == 3500
+    assert result.metadata["final_hold_ms"] == 3000
     assert (
         result.metadata["actual_duration_ms"]
         >= result.metadata["settle_time_ms"] + result.metadata["final_hold_ms"]

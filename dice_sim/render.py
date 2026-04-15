@@ -135,8 +135,8 @@ def _render_one(
         shade = 0.72 + 0.28 * max(0.0, float(np.dot(normal, light)))
         color = tuple(int(np.clip(channel * shade, 0, 255)) for channel in base_color)
         polygon = [tuple(point) for point in polygon_points]
-        draw.polygon(polygon, fill=color)
         if mesh.dice_type == "D4":
+            draw.polygon(polygon, fill=color)
             draw.line(polygon + [polygon[0]], fill=edge_color, width=2)
             show_d4_labels = normal[2] > 0.08 or top_vertex in surface
             if show_d4_labels and surface_index < len(mesh.result_values):
@@ -145,14 +145,18 @@ def _render_one(
                 )
         elif mesh.dice_type == "D6":
             if surface_index < len(mesh.result_values):
-                _draw_d6_pips(
+                _draw_d6_face_texture(
                     image,
                     polygon_points.copy(),
                     int(mesh.result_values[surface_index]),
+                    color,
                     ink_color,
                 )
+            else:
+                draw.polygon(polygon, fill=color)
             draw.line(polygon + [polygon[0]], fill=edge_color, width=2)
         else:
+            draw.polygon(polygon, fill=color)
             draw.line(polygon + [polygon[0]], fill=edge_color, width=2)
             if normal[2] > 0.08 and surface_index < len(mesh.result_values):
                 number_decals.append(
@@ -326,18 +330,19 @@ def _draw_face_number(
     _draw_textured_polygon(image, points, source_polygon, texture)
 
 
-def _draw_d6_pips(
+def _draw_d6_face_texture(
     image: Image.Image,
     points: np.ndarray,
     value: int,
+    base_color: tuple[int, int, int],
     ink_color: tuple[int, int, int],
 ) -> None:
     area = _polygon_area(points)
     if area < 18:
         return
     texture_size = 384
-    source_polygon = _texture_polygon(4, texture_size)
-    texture = _d6_pip_texture(value, ink_color, texture_size)
+    source_polygon = _full_texture_polygon(texture_size)
+    texture = _d6_face_texture(value, base_color, ink_color, texture_size)
     _draw_textured_polygon(image, points, source_polygon, texture)
 
 
@@ -438,6 +443,19 @@ def _texture_polygon(point_count: int, texture_size: int) -> np.ndarray:
     )
 
 
+def _full_texture_polygon(texture_size: int) -> np.ndarray:
+    edge = texture_size - 1
+    return np.array(
+        [
+            [0.0, 0.0],
+            [edge, 0.0],
+            [edge, edge],
+            [0.0, edge],
+        ],
+        dtype=float,
+    )
+
+
 def _polygon_triangles(point_count: int) -> tuple[tuple[int, int, int], ...]:
     return tuple((0, idx, idx + 1) for idx in range(1, point_count - 1))
 
@@ -474,13 +492,14 @@ def _face_number_texture(
     return _labeled_face_texture(((text, center),), ink_color, texture_size, font_size)
 
 
-@lru_cache(maxsize=64)
-def _d6_pip_texture(
+@lru_cache(maxsize=256)
+def _d6_face_texture(
     value: int,
+    base_color: tuple[int, int, int],
     ink_color: tuple[int, int, int],
     texture_size: int,
 ) -> Image.Image:
-    image = Image.new("RGBA", (texture_size, texture_size), (255, 255, 255, 0))
+    image = Image.new("RGBA", (texture_size, texture_size), (*base_color, 255))
     draw = ImageDraw.Draw(image)
     radius = texture_size * 0.065
     for x, y in _d6_pip_positions(value, texture_size):
