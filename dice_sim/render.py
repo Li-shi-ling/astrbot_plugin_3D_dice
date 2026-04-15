@@ -84,17 +84,27 @@ def _render_one(
     for body_index, pose in enumerate(frame.poses):
         rotation = quaternion_to_matrix(pose.orientation)
         world_points = mesh.vertices @ rotation.T + np.asarray(pose.position)
+        camera_points = world_points @ camera.T
         top_vertex = (
             int(np.argmax(world_points[:, 2])) if mesh.dice_type == "D4" else -1
         )
         projected = _project_world(world_points, camera, width, height, scale, center)
-        projected_bodies.append((body_index, projected, world_points, top_vertex))
+        projected_bodies.append(
+            (body_index, projected, camera_points, world_points, top_vertex)
+        )
         _draw_shadow(draw, world_points, camera, width, height, scale, center)
 
     surfaces_to_draw = []
-    for body_index, projected, _world_points, top_vertex in projected_bodies:
+    for (
+        body_index,
+        projected,
+        camera_points,
+        _world_points,
+        top_vertex,
+    ) in projected_bodies:
         for surface_index, surface in enumerate(mesh.render_faces):
             pts = projected[list(surface)]
+            face_camera_points = camera_points[list(surface)]
             depth = float(pts[:, 2].mean())
             surfaces_to_draw.append(
                 (
@@ -103,6 +113,7 @@ def _render_one(
                     surface_index,
                     surface,
                     pts,
+                    face_camera_points,
                     top_vertex,
                 )
             )
@@ -123,14 +134,15 @@ def _render_one(
         surface_index,
         surface,
         pts,
+        face_camera_points,
         top_vertex,
     ) in surfaces_to_draw:
         polygon_points = pts[:, :2]
         if _polygon_area(polygon_points) <= 1:
             continue
         normal = _surface_camera_normal(pts)
-        front_facing = normal[2] > D6_FRONT_FACE_EPSILON
-        if mesh.dice_type == "D6" and not front_facing:
+        d6_front_facing = _d6_face_is_visible(face_camera_points)
+        if mesh.dice_type == "D6" and not d6_front_facing:
             continue
         shade = 0.72 + 0.28 * max(0.0, float(np.dot(normal, light)))
         color = tuple(int(np.clip(channel * shade, 0, 255)) for channel in base_color)
@@ -144,16 +156,16 @@ def _render_one(
                     (polygon_points.copy(), tuple(surface), top_vertex)
                 )
         elif mesh.dice_type == "D6":
+            draw.polygon(polygon, fill=color)
             if surface_index < len(mesh.result_values):
-                _draw_d6_face_texture(
-                    image,
+                _draw_d6_face_pips(
+                    draw,
                     polygon_points.copy(),
+                    mesh,
+                    surface,
                     int(mesh.result_values[surface_index]),
-                    color,
                     ink_color,
                 )
-            else:
-                draw.polygon(polygon, fill=color)
             draw.line(polygon + [polygon[0]], fill=edge_color, width=2)
         else:
             draw.polygon(polygon, fill=color)
@@ -330,20 +342,63 @@ def _draw_face_number(
     _draw_textured_polygon(image, points, source_polygon, texture)
 
 
-def _draw_d6_face_texture(
-    image: Image.Image,
+def _draw_d6_face_pips(
+    draw: ImageDraw.ImageDraw,
     points: np.ndarray,
+    mesh: MeshData,
+    surface: tuple[int, ...],
     value: int,
-    base_color: tuple[int, int, int],
     ink_color: tuple[int, int, int],
 ) -> None:
     area = _polygon_area(points)
-    if area < 18:
+    if area < 18 or len(surface) != 4:
         return
-    texture_size = 384
-    source_polygon = _full_texture_polygon(texture_size)
-    texture = _d6_face_texture(value, base_color, ink_color, texture_size)
-    _draw_textured_polygon(image, points, source_polygon, texture)
+    corners = _d6_face_uv_corners(mesh, surface, points)
+    if corners is None:
+        return
+    p00, p10, p01 = corners
+    u_axis = p10 - p00
+    v_axis = p01 - p00
+    radius = max(1.5, min(np.linalg.norm(u_axis), np.linalg.norm(v_axis)) * 0.065)
+    for u, v in _d6_pip_uvs(value):
+        center = p00 + u_axis * u + v_axis * v
+        draw.ellipse(
+            [
+                float(center[0] - radius),
+                float(center[1] - radius),
+                float(center[0] + radius),
+                float(center[1] + radius),
+            ],
+            fill=ink_color,
+        )
+
+
+def _d6_face_uv_corners(
+    mesh: MeshData, surface: tuple[int, ...], points: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    local_points = mesh.vertices[list(surface)]
+    ranges = np.ptp(local_points, axis=0)
+    varying_axes = [axis for axis, span in enumerate(ranges) if span > 1e-6]
+    if len(varying_axes) != 2:
+        return None
+
+    u_axis, v_axis = varying_axes
+    u_values = local_points[:, u_axis]
+    v_values = local_points[:, v_axis]
+    u_min, u_max = float(u_values.min()), float(u_values.max())
+    v_min, v_max = float(v_values.min()), float(v_values.max())
+    if abs(u_max - u_min) < 1e-6 or abs(v_max - v_min) < 1e-6:
+        return None
+
+    corners: dict[tuple[int, int], np.ndarray] = {}
+    for screen_point, u_value, v_value in zip(points, u_values, v_values):
+        u = int(round((float(u_value) - u_min) / (u_max - u_min)))
+        v = int(round((v_max - float(v_value)) / (v_max - v_min)))
+        corners[(u, v)] = np.asarray(screen_point, dtype=float)
+    try:
+        return corners[(0, 0)], corners[(1, 0)], corners[(0, 1)]
+    except KeyError:
+        return None
 
 
 def _draw_d4_face_numbers(
@@ -443,19 +498,6 @@ def _texture_polygon(point_count: int, texture_size: int) -> np.ndarray:
     )
 
 
-def _full_texture_polygon(texture_size: int) -> np.ndarray:
-    edge = texture_size - 1
-    return np.array(
-        [
-            [0.0, 0.0],
-            [edge, 0.0],
-            [edge, edge],
-            [0.0, edge],
-        ],
-        dtype=float,
-    )
-
-
 def _polygon_triangles(point_count: int) -> tuple[tuple[int, int, int], ...]:
     return tuple((0, idx, idx + 1) for idx in range(1, point_count - 1))
 
@@ -492,31 +534,13 @@ def _face_number_texture(
     return _labeled_face_texture(((text, center),), ink_color, texture_size, font_size)
 
 
-@lru_cache(maxsize=256)
-def _d6_face_texture(
-    value: int,
-    base_color: tuple[int, int, int],
-    ink_color: tuple[int, int, int],
-    texture_size: int,
-) -> Image.Image:
-    image = Image.new("RGBA", (texture_size, texture_size), (*base_color, 255))
-    draw = ImageDraw.Draw(image)
-    radius = texture_size * 0.065
-    for x, y in _d6_pip_positions(value, texture_size):
-        draw.ellipse(
-            [x - radius, y - radius, x + radius, y + radius],
-            fill=(*ink_color, 255),
-        )
-    return image
-
-
-def _d6_pip_positions(value: int, texture_size: int) -> tuple[tuple[float, float], ...]:
-    left = texture_size * 0.34
-    center = texture_size * 0.50
-    right = texture_size * 0.66
-    top = texture_size * 0.32
-    middle = texture_size * 0.50
-    bottom = texture_size * 0.68
+def _d6_pip_uvs(value: int) -> tuple[tuple[float, float], ...]:
+    left = 0.34
+    center = 0.50
+    right = 0.66
+    top = 0.32
+    middle = 0.50
+    bottom = 0.68
     layouts = {
         1: ((center, middle),),
         2: ((left, top), (right, bottom)),
@@ -630,6 +654,11 @@ def _surface_camera_normal(points: np.ndarray) -> np.ndarray:
     if norm == 0:
         return np.array([0.0, 0.0, 1.0])
     return normal / norm
+
+
+def _d6_face_is_visible(camera_points: np.ndarray) -> bool:
+    normal = _surface_camera_normal(camera_points)
+    return normal[2] < -D6_FRONT_FACE_EPSILON
 
 
 def _polygon_area(points: np.ndarray) -> float:

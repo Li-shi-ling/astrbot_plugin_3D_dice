@@ -82,7 +82,7 @@ def _cube() -> MeshData:
         vertices=vertices,
         faces=faces,
         result_normals=normals,
-        result_values=(1, 6, 2, 3, 4, 5),
+        result_values=(1, 6, 4, 2, 3, 5),
         result_rule="top_face",
         result_centers=centers,
         render_faces=quads,

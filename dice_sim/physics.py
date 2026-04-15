@@ -23,9 +23,9 @@ THROW_START_Y = -2.35
 THROW_START_Z = 2.55
 MULTI_DICE_COLUMN_GAP = 2.45
 MULTI_DICE_ROW_GAP = 2.55
-D6_PRIMARY_TUMBLE_SPEED_RANGE = (10.5, 14.5)
-D6_SECONDARY_TUMBLE_SPEED_RANGE = (2.5, 5.0)
-D6_YAW_SPIN_SPEED_RANGE = (1.2, 3.0)
+D6_PRIMARY_TUMBLE_SPEED_RANGE = (3.6, 4.8)
+D6_SECONDARY_TUMBLE_SPEED_RANGE = (0.0, 0.04)
+D6_YAW_SPIN_SPEED_RANGE = (0.0, 0.02)
 
 
 def simulate_roll(
@@ -87,13 +87,7 @@ def simulate_roll(
 
         for idx in range(count):
             position = _initial_position(count, idx, rng)
-            orientation = p.getQuaternionFromEuler(
-                [
-                    rng.random() * 2 * math.pi,
-                    rng.random() * 2 * math.pi,
-                    rng.random() * 2 * math.pi,
-                ]
-            )
+            orientation = _initial_orientation(p, mesh, rng)
             body = p.createMultiBody(
                 baseMass=1.0,
                 baseCollisionShapeIndex=collision,
@@ -204,6 +198,36 @@ def _throw_target(count: int, idx: int, rng: random.Random) -> list[float]:
         0.55 + rng.uniform(-0.45, 0.45),
         lane_bias + rng.uniform(-0.55, 0.55),
     ]
+
+
+def _initial_orientation(p: Any, mesh: MeshData, rng: random.Random) -> tuple[float, ...]:
+    if mesh.dice_type != "D6":
+        return tuple(
+            float(value)
+            for value in p.getQuaternionFromEuler(
+                [
+                    rng.random() * 2 * math.pi,
+                    rng.random() * 2 * math.pi,
+                    rng.random() * 2 * math.pi,
+                ]
+            )
+        )
+
+    face_index = rng.randrange(len(mesh.result_normals))
+    face_up = _rotation_between_vectors(
+        mesh.result_normals[face_index],
+        np.array([0.0, 0.0, 1.0], dtype=float),
+    )
+    yaw = rng.random() * 2 * math.pi
+    yaw_rotation = np.array(
+        [
+            [math.cos(yaw), -math.sin(yaw), 0.0],
+            [math.sin(yaw), math.cos(yaw), 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=float,
+    )
+    return _matrix_to_quaternion_xyzw(yaw_rotation @ face_up)
 
 
 def _body_dynamics(mesh: MeshData, count: int) -> dict[str, float]:
@@ -326,6 +350,73 @@ def _initial_angular_velocity(
     )
     angular = primary_tumble + secondary_tumble + yaw_spin
     return [float(component) for component in angular]
+
+
+def _rotation_between_vectors(source: np.ndarray, target: np.ndarray) -> np.ndarray:
+    source_unit = np.asarray(source, dtype=float)
+    target_unit = np.asarray(target, dtype=float)
+    source_unit /= np.linalg.norm(source_unit)
+    target_unit /= np.linalg.norm(target_unit)
+    dot = float(np.clip(np.dot(source_unit, target_unit), -1.0, 1.0))
+    if dot > 1.0 - 1e-9:
+        return np.eye(3)
+    if dot < -1.0 + 1e-9:
+        axis = np.cross(source_unit, np.array([1.0, 0.0, 0.0], dtype=float))
+        if np.linalg.norm(axis) < 1e-6:
+            axis = np.cross(source_unit, np.array([0.0, 1.0, 0.0], dtype=float))
+        axis /= np.linalg.norm(axis)
+        return _axis_angle_matrix(axis, math.pi)
+    axis = np.cross(source_unit, target_unit)
+    axis /= np.linalg.norm(axis)
+    return _axis_angle_matrix(axis, math.acos(dot))
+
+
+def _axis_angle_matrix(axis: np.ndarray, angle: float) -> np.ndarray:
+    x, y, z = axis
+    c = math.cos(angle)
+    s = math.sin(angle)
+    t = 1.0 - c
+    return np.array(
+        [
+            [t * x * x + c, t * x * y - s * z, t * x * z + s * y],
+            [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
+            [t * x * z - s * y, t * y * z + s * x, t * z * z + c],
+        ],
+        dtype=float,
+    )
+
+
+def _matrix_to_quaternion_xyzw(matrix: np.ndarray) -> tuple[float, float, float, float]:
+    trace = float(np.trace(matrix))
+    if trace > 0.0:
+        scale = math.sqrt(trace + 1.0) * 2.0
+        w = 0.25 * scale
+        x = (matrix[2, 1] - matrix[1, 2]) / scale
+        y = (matrix[0, 2] - matrix[2, 0]) / scale
+        z = (matrix[1, 0] - matrix[0, 1]) / scale
+    else:
+        diagonal = np.diag(matrix)
+        axis = int(np.argmax(diagonal))
+        if axis == 0:
+            scale = math.sqrt(1.0 + matrix[0, 0] - matrix[1, 1] - matrix[2, 2]) * 2.0
+            w = (matrix[2, 1] - matrix[1, 2]) / scale
+            x = 0.25 * scale
+            y = (matrix[0, 1] + matrix[1, 0]) / scale
+            z = (matrix[0, 2] + matrix[2, 0]) / scale
+        elif axis == 1:
+            scale = math.sqrt(1.0 + matrix[1, 1] - matrix[0, 0] - matrix[2, 2]) * 2.0
+            w = (matrix[0, 2] - matrix[2, 0]) / scale
+            x = (matrix[0, 1] + matrix[1, 0]) / scale
+            y = 0.25 * scale
+            z = (matrix[1, 2] + matrix[2, 1]) / scale
+        else:
+            scale = math.sqrt(1.0 + matrix[2, 2] - matrix[0, 0] - matrix[1, 1]) * 2.0
+            w = (matrix[1, 0] - matrix[0, 1]) / scale
+            x = (matrix[0, 2] + matrix[2, 0]) / scale
+            y = (matrix[1, 2] + matrix[2, 1]) / scale
+            z = 0.25 * scale
+    norm = math.sqrt(x * x + y * y + z * z + w * w)
+    return (x / norm, y / norm, z / norm, w / norm)
 
 
 def _capture_until_settled(
