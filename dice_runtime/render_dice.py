@@ -32,6 +32,7 @@ CONFIGURE_TIMEOUT_MS = 5000
 PLAYWRIGHT_INSTALL_TIMEOUT_SECONDS = 600
 DEFAULT_CAPTURE_MAX_SIDE = 560
 DEFAULT_CAPTURE_VERTICAL_INSET = 32
+SESSION_RECYCLE_RENDER_COUNT = 25
 XVFB_ENV = "ASTRBOT_3D_DICE_USE_XVFB"
 XVFB_ACTIVE_ENV = "ASTRBOT_3D_DICE_XVFB"
 
@@ -92,41 +93,46 @@ class PersistedBrowserSession:
         self._server: StaticServer | None = None
         self._clip: dict[str, int] | None = None
         self._ready = False
+        self._render_count = 0
         self.render_lock = threading.Lock()
 
     def start(self) -> None:
-        sync_playwright = get_sync_playwright()
-        self._playwright_ctx = sync_playwright().__enter__()
-        self._server = StaticServer(self.site_dir)
-        self._server.__enter__()
-        base_url = f"http://127.0.0.1:{self._server.port}/index.html"
+        try:
+            sync_playwright = get_sync_playwright()
+            self._playwright_ctx = sync_playwright().__enter__()
+            self._server = StaticServer(self.site_dir)
+            self._server.__enter__()
+            base_url = f"http://127.0.0.1:{self._server.port}/index.html"
 
-        self._browser = self._playwright_ctx.chromium.launch(
-            executable_path=self.browser_path,
-            headless=not is_display_available(),
-            timeout=self.timeout_ms,
-            args=[
-                "--allow-file-access-from-files",
-                "--autoplay-policy=no-user-gesture-required",
-                "--disable-background-timer-throttling",
-                "--disable-dev-shm-usage",
-                "--disable-renderer-backgrounding",
-                "--mute-audio",
-            ],
-        )
-        self._context = self._browser.new_context(
-            viewport={"width": self.width, "height": self.height},
-            device_scale_factor=1,
-        )
-        self._page = self._context.new_page()
-        self._page.set_default_timeout(self.timeout_ms)
-        self._page.set_default_navigation_timeout(self.timeout_ms)
-        self._page.goto(
-            base_url, wait_until="domcontentloaded", timeout=self.timeout_ms
-        )
-        wait_for_dice_app(self._page)
-        self._clip = get_capture_clip(self._page)
-        self._ready = True
+            self._browser = self._playwright_ctx.chromium.launch(
+                executable_path=self.browser_path,
+                headless=not is_display_available(),
+                timeout=self.timeout_ms,
+                args=[
+                    "--allow-file-access-from-files",
+                    "--autoplay-policy=no-user-gesture-required",
+                    "--disable-background-timer-throttling",
+                    "--disable-dev-shm-usage",
+                    "--disable-renderer-backgrounding",
+                    "--mute-audio",
+                ],
+            )
+            self._context = self._browser.new_context(
+                viewport={"width": self.width, "height": self.height},
+                device_scale_factor=1,
+            )
+            self._page = self._context.new_page()
+            self._page.set_default_timeout(self.timeout_ms)
+            self._page.set_default_navigation_timeout(self.timeout_ms)
+            self._page.goto(
+                base_url, wait_until="domcontentloaded", timeout=self.timeout_ms
+            )
+            wait_for_dice_app(self._page)
+            self._clip = get_capture_clip(self._page)
+            self._ready = True
+        except BaseException:
+            self.close()
+            raise
 
     def is_alive(self) -> bool:
         """Return whether the persisted page still accepts commands."""
@@ -157,6 +163,10 @@ class PersistedBrowserSession:
 
     def get_page_and_clip(self) -> tuple[Any, dict[str, int]]:
         return self._page, self._clip  # type: ignore[return-value]
+
+    def should_recycle_after_render(self) -> bool:
+        self._render_count += 1
+        return self._render_count >= SESSION_RECYCLE_RENDER_COUNT
 
     def close(self) -> None:
         self._ready = False
@@ -613,8 +623,12 @@ def _render_dice_gif_impl(
 
     with session.render_lock:
         page, clip = session.get_page_and_clip()
+        baseline_frame: Image.Image | None = None
+        frames: list[Image.Image] = []
+        recycle_session = False
 
         try:
+            cleanup_page_render_artifacts(page)
             configure_dice(page, dice_type=dice_type, dice_count=count)
             if better_render_quality:
                 wait_for_stable_render(page, clip)
@@ -635,9 +649,13 @@ def _render_dice_gif_impl(
                     wait_for_roll_start(page, clip, baseline_frame)
                 else:
                     wait_for_animation_start(page, clip, baseline_frame, 2000)
-                webm_data = finish_webm_recording(page)
+                try:
+                    webm_data = finish_webm_recording(page)
+                finally:
+                    cleanup_page_render_artifacts(page)
                 webm_path = output_path.with_suffix(".webm")
                 write_webm_file(webm_data, webm_path)
+                webm_data.clear()
                 try:
                     convert_webm_to_gif(
                         webm_path=webm_path,
@@ -709,6 +727,15 @@ def _render_dice_gif_impl(
             # Rebuild the persistent page on the next request after any page error.
             _close_persisted_session_impl()
             raise
+        finally:
+            if baseline_frame is not None:
+                baseline_frame.close()
+            close_images(frames)
+            cleanup_page_render_artifacts(page)
+            recycle_session = session.should_recycle_after_render()
+
+    if recycle_session:
+        _close_persisted_session_impl()
 
     return {
         "gif_path": str(output_path),
@@ -1066,13 +1093,34 @@ def get_capture_clip(page: Any) -> dict[str, int]:
 
 def capture_clip_png(page: Any, clip: dict[str, int]) -> Image.Image:
     png_bytes = page.screenshot(type="png", clip=clip)
-    return Image.open(BytesIO(png_bytes)).convert("RGBA")
+    image = Image.open(BytesIO(png_bytes))
+    try:
+        return image.convert("RGBA")
+    finally:
+        image.close()
+
+
+def close_images(images: list[Image.Image]) -> None:
+    while images:
+        image = images.pop()
+        try:
+            image.close()
+        except Exception:
+            pass
 
 
 def count_changed_pixels(before: Image.Image, after: Image.Image) -> int:
-    diff = ImageChops.difference(before.convert("RGBA"), after.convert("RGBA"))
+    before_rgba = before.convert("RGBA")
+    after_rgba = after.convert("RGBA")
+    diff = ImageChops.difference(before_rgba, after_rgba)
     alpha = diff.convert("L")
-    return sum(1 for pixel in alpha.getdata() if pixel)
+    try:
+        return sum(1 for pixel in alpha.getdata() if pixel)
+    finally:
+        alpha.close()
+        diff.close()
+        after_rgba.close()
+        before_rgba.close()
 
 
 def wait_for_stable_render(
@@ -1087,17 +1135,22 @@ def wait_for_stable_render(
     stable_count = 0
     deadline = time.time() + (max_wait_ms / 1000.0)
 
-    while time.time() < deadline:
-        page.wait_for_timeout(interval_ms)
-        current_frame = capture_clip_png(page, clip)
-        changed_pixels = count_changed_pixels(previous_frame, current_frame)
-        if changed_pixels <= changed_pixel_tolerance:
-            stable_count += 1
-            if stable_count >= stable_samples:
-                return
-        else:
-            stable_count = 0
-        previous_frame = current_frame
+    try:
+        while time.time() < deadline:
+            page.wait_for_timeout(interval_ms)
+            current_frame = capture_clip_png(page, clip)
+            changed_pixels = count_changed_pixels(previous_frame, current_frame)
+            previous_frame.close()
+            if changed_pixels <= changed_pixel_tolerance:
+                stable_count += 1
+                if stable_count >= stable_samples:
+                    current_frame.close()
+                    return
+            else:
+                stable_count = 0
+            previous_frame = current_frame
+    finally:
+        previous_frame.close()
 
 
 def trigger_roll(page: Any) -> None:
@@ -1124,8 +1177,11 @@ def wait_for_animation_start(
     deadline = time.time() + (max_wait_ms / 1000.0)
     while time.time() < deadline:
         current_frame = capture_clip_png(page, clip)
-        if count_changed_pixels(baseline_frame, current_frame) > 0:
-            return
+        try:
+            if count_changed_pixels(baseline_frame, current_frame) > 0:
+                return
+        finally:
+            current_frame.close()
         page.wait_for_timeout(100)
     raise RuntimeError("Timed out waiting for animation to start")
 
@@ -1221,9 +1277,7 @@ def capture_screencast_frames(
     selected_frames = sample_evenly(encoded_frames, target_count)
     viewport = {"width": int(width), "height": int(height)}
     return [
-        crop_screencast_frame(
-            decode_screencast_frame(encoded_frame), clip=clip, viewport=viewport
-        )
+        decode_and_crop_screencast_frame(encoded_frame, clip=clip, viewport=viewport)
         for encoded_frame in selected_frames
     ]
 
@@ -1369,7 +1423,27 @@ def sample_evenly(items: list[str], target_count: int) -> list[str]:
 
 def decode_screencast_frame(encoded_frame: str) -> Image.Image:
     frame_bytes = base64.b64decode(encoded_frame)
-    return Image.open(BytesIO(frame_bytes)).convert("RGBA")
+    image = Image.open(BytesIO(frame_bytes))
+    try:
+        return image.convert("RGBA")
+    finally:
+        image.close()
+
+
+def decode_and_crop_screencast_frame(
+    encoded_frame: str, clip: dict[str, int], viewport: dict[str, int]
+) -> Image.Image:
+    decoded = decode_screencast_frame(encoded_frame)
+    cropped: Image.Image | None = None
+    try:
+        cropped = crop_screencast_frame(decoded, clip=clip, viewport=viewport)
+        if cropped is decoded:
+            return decoded.copy()
+        return cropped.copy()
+    finally:
+        decoded.close()
+        if cropped is not None and cropped is not decoded:
+            cropped.close()
 
 
 def crop_screencast_frame(
@@ -1395,12 +1469,38 @@ def find_ffmpeg_path(explicit_path: str | None = None) -> str | None:
     return shutil.which(os.environ.get("FFMPEG_BINARY", "ffmpeg"))
 
 
+def cleanup_page_render_artifacts(page: Any) -> None:
+    try:
+        page.evaluate(
+            """
+            () => {
+              if (typeof globalThis.__astrbotWebmCleanup === 'function') {
+                try {
+                  globalThis.__astrbotWebmCleanup();
+                } catch (_) {}
+              }
+              delete globalThis.__astrbotWebmCleanup;
+              delete globalThis.__astrbotWebmPromise;
+              delete globalThis.__astrbotWebmState;
+            }
+            """
+        )
+    except Exception:
+        pass
+
+
 def start_webm_recording(
     page: Any, clip: dict[str, int], fps: int, duration: int
 ) -> None:
     page.evaluate(
         """
         ({ clip, fps, duration }) => {
+          if (typeof globalThis.__astrbotWebmCleanup === 'function') {
+            globalThis.__astrbotWebmCleanup();
+          }
+          delete globalThis.__astrbotWebmPromise;
+          delete globalThis.__astrbotWebmState;
+
           const canvas = [...document.querySelectorAll('canvas')]
             .find((item) => {
               const rect = item.getBoundingClientRect();
@@ -1430,6 +1530,20 @@ def start_webm_recording(
           );
           const chunks = [];
           let frameTimer = null;
+          globalThis.__astrbotWebmState = { recorder, stream, chunks };
+          globalThis.__astrbotWebmCleanup = () => {
+            if (frameTimer !== null) {
+              clearInterval(frameTimer);
+              frameTimer = null;
+            }
+            stream.getTracks().forEach((track) => {
+              try {
+                track.stop();
+              } catch (_) {}
+            });
+            chunks.length = 0;
+            delete globalThis.__astrbotWebmState;
+          };
 
           globalThis.__astrbotWebmPromise = new Promise((resolve, reject) => {
             recorder.ondataavailable = (event) => {
@@ -1444,11 +1558,13 @@ def start_webm_recording(
               try {
                 if (frameTimer !== null) {
                   clearInterval(frameTimer);
+                  frameTimer = null;
                 }
                 stream.getTracks().forEach((track) => track.stop());
                 const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
                 const buffer = await blob.arrayBuffer();
                 const bytes = new Uint8Array(buffer);
+                chunks.length = 0;
                 let binary = '';
                 const chunkSize = 0x8000;
                 for (let index = 0; index < bytes.length; index += chunkSize) {
@@ -1461,6 +1577,7 @@ def start_webm_recording(
                   width: canvas.width,
                   height: canvas.height,
                 });
+                delete globalThis.__astrbotWebmState;
               } catch (error) {
                 reject(error);
               }
